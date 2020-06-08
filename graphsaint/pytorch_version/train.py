@@ -28,15 +28,17 @@ def evaluate_full_batch(model, minibatch, mode='val'):
 
 
 def prepare(train_data,train_params,arch_gcn):
-    adj_full,adj_train,feat_full,class_arr,role = train_data
+    adj_full,adj_train,adj_val,feat_full,class_arr,role = train_data
     adj_full = adj_full.astype(np.int32)
+    adj_val = adj_val.astype(np.int32)
     adj_train = adj_train.astype(np.int32)
     adj_full_norm = adj_norm(adj_full)
+    adj_val_norm = adj_norm(adj_val)
     num_classes = class_arr.shape[1]
 
-    minibatch = Minibatch(adj_full_norm, adj_train, role, train_params)
+    minibatch = Minibatch(adj_full_norm, adj_train, adj_val_norm, role, train_params)
     model = GraphSAINT(num_classes, arch_gcn, train_params, feat_full, class_arr)
-    minibatch_eval=Minibatch(adj_full_norm,adj_train,role,train_params,cpu_eval=True)
+    minibatch_eval=Minibatch(adj_full_norm,adj_train,adj_val_norm,role,train_params,cpu_eval=True)
     model_eval=GraphSAINT(num_classes, arch_gcn, train_params, feat_full, class_arr, cpu_eval=True)
     if args_global.gpu >= 0:
         model = model.cuda()
@@ -109,6 +111,7 @@ def get_model(train_phases, train_params, model, minibatch, minibatch_eval, mode
         text+=str(k)+str(v)
     path_saver='pytorch_models/'+hashlib.md5(text.encode('utf-8')).hexdigest()+'.pkl'
     if os.path.exists(path_saver):
+        printf("Found existing model, loading and evaluating...")
         if args_global.cpu_eval:
             model_eval.load_state_dict(torch.load(path_saver,map_location=lambda storage,loc:storage))
         else:
@@ -127,13 +130,16 @@ def get_activation(module, input, output):
 
 def prune(model_eval,prune_params,minibatch_eval):
     mask=torch.ones(model_eval.num_classes,dtype=bool)
-    layers=[model_eval.classifier]
+    import pdb; pdb.set_trace()
+    # layers=[model_eval.classifier]
+    layers=[model_eval.aggregators[1]]
     lassos=list()
     for layer in layers:
+        if False: # first layer?
         for o in range(layer.order+1):
             print('optimizing {} order {}:'.format(layer._get_name(),o))
             handle=layer.f_lin[o].register_forward_hook(get_activation)
-            evaluate_full_batch(model_eval,minibatch_eval,mode='test')
+            evaluate_full_batch(model_eval,minibatch_eval,mode='val')
             handle.remove()
             feat=activation[0].cuda()
             weight=torch.transpose(layer.f_lin[o].weight,0,1).cuda()

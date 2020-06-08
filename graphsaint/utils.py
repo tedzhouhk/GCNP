@@ -12,6 +12,7 @@ from graphsaint.globals import *
 def load_data(prefix, normalize=True):
     adj_full = scipy.sparse.load_npz('./{}/adj_full.npz'.format(prefix)).astype(np.bool)
     adj_train = scipy.sparse.load_npz('./{}/adj_train.npz'.format(prefix)).astype(np.bool)
+    adj_val = scipy.sparse.load_npz('./{}/adj_val.npz'.format(prefix)).astype(np.bool)
     role = json.load(open('./{}/role.json'.format(prefix)))
     feats = np.load('./{}/feats.npy'.format(prefix))
     class_map = json.load(open('./{}/class_map.json'.format(prefix)))
@@ -24,10 +25,10 @@ def load_data(prefix, normalize=True):
     scaler.fit(train_feats)
     feats = scaler.transform(feats)
     # -------------------------
-    return adj_full, adj_train, feats, class_map, role
+    return adj_full, adj_train, adj_val, feats, class_map, role
 
 
-def process_graph_data(adj_full, adj_train, feats, class_map, role):
+def process_graph_data(adj_full, adj_train, adj_val, feats, class_map, role):
     """
     setup vertex property map for output classes, train/val/test masks, and feats
     """
@@ -43,7 +44,7 @@ def process_graph_data(adj_full, adj_train, feats, class_map, role):
         offset = min(class_map.values())
         for k,v in class_map.items():
             class_arr[k][v-offset] = 1
-    return adj_full, adj_train, feats, class_arr, role
+    return adj_full, adj_train, adj_val, feats, class_arr, role
 
 
 def parse_layer_yml(arch_gcn,dim_input):

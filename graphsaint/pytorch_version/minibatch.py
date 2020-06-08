@@ -29,7 +29,7 @@ class Minibatch:
     This minibatch iterator iterates over nodes for supervised learning.
     """
 
-    def __init__(self, adj_full_norm, adj_train, role, train_params, cpu_eval=False):
+    def __init__(self, adj_full_norm, adj_train, adj_val_norm, role, train_params, cpu_eval=False):
         """
         role:       array of string (length |V|)
                     storing role of the node ('tr'/'va'/'te')
@@ -43,10 +43,11 @@ class Minibatch:
         self.node_test = np.array(role['te'])
 
         self.adj_full_norm = _coo_scipy2torch(adj_full_norm.tocoo())
+        self.adj_val_norm = _coo_scipy2torch(adj_val_norm.tocoo())
         self.adj_train = adj_train
         if self.use_cuda:       # now i put everything on GPU. Ideally, full graph adj/feat should be optionally placed on CPU
             self.adj_full_norm = self.adj_full_norm.cuda()
-
+            self.adj_val_norm = self.adj_val_norm.cuda()
         # below: book-keeping for mini-batch
         self.node_subgraph = None
         self.batch_num = -1
@@ -152,7 +153,10 @@ class Minibatch:
     def one_batch(self,mode='train'):
         if mode in ['val','test']:
             self.node_subgraph = np.arange(self.adj_full_norm.shape[0])
-            adj = self.adj_full_norm
+            if mode=='val':
+                adj=self.adj_val_norm
+            elif mode=='test':
+                adj=self.adj_full_norm
         else:
             assert mode == 'train'
             if len(self.subgraphs_remaining_nodes) == 0:
