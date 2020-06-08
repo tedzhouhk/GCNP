@@ -102,8 +102,9 @@ def train(train_phases, model, minibatch, minibatch_eval, model_eval, path_saver
 
 def get_model(train_phases, train_params, model, minibatch, minibatch_eval, model_eval):
     text=args_global.data_prefix
-    for k,v in train_phases.items():
-        text+=str(k)+str(v)
+    for train_phase in train_phases:
+        for k,v in train_phase.items():
+            text+=str(k)+str(v)
     for k,v in train_params.items():
         text+=str(k)+str(v)
     path_saver='pytorch_models/'+hashlib.md5(text.encode('utf-8')).hexdigest()+'.pkl'
@@ -112,8 +113,11 @@ def get_model(train_phases, train_params, model, minibatch, minibatch_eval, mode
             model_eval.load_state_dict(torch.load(path_saver,map_location=lambda storage,loc:storage))
         else:
             model_eval.load_state_dict(torch.load(path_saver))
+        loss_test, f1mic_test, f1mac_test = evaluate_full_batch(model_eval, minibatch_eval, mode='test')
+        printf("Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}".format(f1mic_test, f1mac_test), style='red')
     else:
         train(train_phases, model, minibatch, minibatch_eval, model_eval, path_saver=path_saver)
+        
 
 activation=[]
 def get_activation(module, input, output):
@@ -134,8 +138,8 @@ def prune(model_eval,prune_params,minibatch_eval):
             feat=activation[0].cuda()
             weight=torch.transpose(layer.f_lin[o].weight,0,1).cuda()
             ref=torch.mm(feat,weight).detach()
-            lassos.append(Lasso(weight.shape[0],weight,prune_params['beta_lmbd'],prune_params['beta_lr'],prune_params['weight_lr']))
-            if args_global.gpu >= 0:
+            lassos.append(Lasso(weight.shape[0],weight,prune_params['beta_lmbd_1'],prune_params['beta_lmbd_2'],prune_params['beta_lmbd_1_step'],prune_params['beta_lmbd_2_step'],prune_params['beta_lr'],prune_params['weight_lr']))
+            if args_global.gpu>=0:
                 lassos[-1]=lassos[-1].cuda()
             train_nodes=minibatch.node_train
             beta_loss=list()
@@ -148,8 +152,9 @@ def prune(model_eval,prune_params,minibatch_eval):
                     batches=np.array_split(train_nodes,(int(feat.shape[0]/prune_params['beta_batch'])))
                     for batch in batches:
                         loss=lassos[-1].optimize_beta(feat[batch],ref[batch],mask)
-                    print('  epoch {} loss: {}'.format(e,loss))
+                    print('    epoch {} loss: {}'.format(e,loss))
                     beta_loss.append(loss)
+                    lassos[-1].lmbd_step()
                 lassos[-1].clip_beta(prune_params['budget'])
                 # optimize weight
                 print('  optimizing weight ...')
@@ -158,10 +163,12 @@ def prune(model_eval,prune_params,minibatch_eval):
                     batches=np.array_split(train_nodes,(int(feat.shape[0]/prune_params['weight_batch'])))
                     for batch in batches:
                         loss=lassos[-1].optimize_weight(feat[batch],ref[batch],mask)
-                    print('  epoch {} loss: {}'.format(e,loss))
+                    print('    epoch {} loss: {}'.format(e,loss))
                     weight_loss.append(loss)
                 lassos[-1].norm()
             lasso_plot(lassos[-1].beta.detach().cpu().numpy(),lassos[-1].weight.detach().cpu().numpy(),beta_loss,weight_loss,prune_params,'{} order {}:'.format(layer._get_name(),o))
+            del feat
+            del weight
             # import pdb; pdb.set_trace()
 
 if __name__ == '__main__':
