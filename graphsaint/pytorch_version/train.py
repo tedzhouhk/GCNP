@@ -130,21 +130,44 @@ def get_activation(module, input, output):
 
 def prune(model_eval,prune_params,minibatch_eval):
     mask=torch.ones(model_eval.num_classes,dtype=bool)
-    import pdb; pdb.set_trace()
-    # layers=[model_eval.classifier]
-    layers=[model_eval.aggregators[1]]
+    layers=[model_eval.classifier]
+    names=['classifier']
+    for i in reversed(range(len(model_eval.aggregators))):
+        layers.append(model_eval.aggregators[i])
+        names.append('conv{}'.format(i))
     lassos=list()
-    for layer in layers:
-        if False: # first layer?
-        for o in range(layer.order+1):
-            print('optimizing {} order {}:'.format(layer._get_name(),o))
+    for i in range(len(layers)):
+        layer=layers[i]
+        name=names[i]
+        if i==len(layers)-1:
+            # for first GCN layer, prune each order seperately
+            optimize_phase=list(range(layer.order+1))
+            stack_feature=0
+            mask=torch.split(mask,split_size_or_sections=int(mask.shape[0]/(layer.order+1)))
+        else:
+            # for middle GCN layers, prune all orders jointly
+            optimize_phase=[0]
+            stack_feature=layer.order
+            mask=[mask]
+        for o in optimize_phase:
+            print('optimizing {} phase {}:'.format(name,o))
             handle=layer.f_lin[o].register_forward_hook(get_activation)
             evaluate_full_batch(model_eval,minibatch_eval,mode='val')
             handle.remove()
-            feat=activation[0].cuda()
-            weight=torch.transpose(layer.f_lin[o].weight,0,1).cuda()
+            if stack_feature==0:
+                feat=activation[0].cuda()
+                weight=torch.transpose(layer.f_lin[o].weight,0,1).cuda()
+            else:
+                feat=[activation[0].cuda()]
+                for _ in range(stack_feature):
+                    feat.append(torch.sparse.mm(minibatch.adj_val_norm,feat[-1]))
+                    feat=torch.cat(feat,0)
+                weight=list()
+                for p in range(stack_feature+1):
+                    weight.append(torch.transpose(layer.f_lin[o].weight,0,1).cuda())
+                weight=torch.cat(weight,1)
             ref=torch.mm(feat,weight).detach()
-            lassos.append(Lasso(weight.shape[0],weight,prune_params['beta_lmbd_1'],prune_params['beta_lmbd_2'],prune_params['beta_lmbd_1_step'],prune_params['beta_lmbd_2_step'],prune_params['beta_lr'],prune_params['weight_lr']))
+            lassos.append(Lasso(weight.shape[0],weight,prune_params['beta_lmbd_1'][i],prune_params['beta_lmbd_2'][i],prune_params['beta_lmbd_1_step'][i],prune_params['beta_lmbd_2_step'][i],prune_params['beta_lr'],prune_params['weight_lr']))
             if args_global.gpu>=0:
                 lassos[-1]=lassos[-1].cuda()
             train_nodes=minibatch.node_train
@@ -157,25 +180,26 @@ def prune(model_eval,prune_params,minibatch_eval):
                     np.random.shuffle(train_nodes)
                     batches=np.array_split(train_nodes,(int(feat.shape[0]/prune_params['beta_batch'])))
                     for batch in batches:
-                        loss=lassos[-1].optimize_beta(feat[batch],ref[batch],mask)
+                        loss=lassos[-1].optimize_beta(feat[batch],ref[batch],mask[o])
                     print('    epoch {} loss: {}'.format(e,loss))
                     beta_loss.append(loss)
                     lassos[-1].lmbd_step()
-                lassos[-1].clip_beta(prune_params['budget'])
+                mask_out=lassos[-1].clip_beta(prune_params['budget'])
                 # optimize weight
                 print('  optimizing weight ...')
                 for e in range(prune_params['weight_epoch']):
                     np.random.shuffle(train_nodes)
                     batches=np.array_split(train_nodes,(int(feat.shape[0]/prune_params['weight_batch'])))
                     for batch in batches:
-                        loss=lassos[-1].optimize_weight(feat[batch],ref[batch],mask)
+                        loss=lassos[-1].optimize_weight(feat[batch],ref[batch],mask[o])
                     print('    epoch {} loss: {}'.format(e,loss))
                     weight_loss.append(loss)
                 lassos[-1].norm()
-            lasso_plot(lassos[-1].beta.detach().cpu().numpy(),lassos[-1].weight.detach().cpu().numpy(),beta_loss,weight_loss,prune_params,'{} order {}:'.format(layer._get_name(),o))
+            lasso_plot(lassos[-1].beta.detach().cpu().numpy(),lassos[-1].weight.detach().cpu().numpy(),beta_loss,weight_loss,prune_params,name+'_'+str(o))
             del feat
             del weight
-            # import pdb; pdb.set_trace()
+        mask=mask_out
+        # import pdb; pdb.set_trace()
 
 if __name__ == '__main__':
     train_params, train_phases, train_data, arch_gcn, prune_params = parse_n_prepare(args_global)

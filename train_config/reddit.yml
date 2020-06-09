@@ -1,8 +1,8 @@
 network:
   - dim: 128
-    aggr: 'concat'
     loss: 'softmax'
-    arch: '1-1'     # '1-0-1-0' is the arch used by S-GCN. Changing to '1-1-0' still leads to significantly higher acc than other baselines.
+    arch: '1-1' 
+    aggr: 'concat'
     act: 'relu'
     bias: 'norm'
 params:
@@ -21,10 +21,22 @@ prune:
     beta_batch: 1024
     beta_lr: 0.05
     beta_epoch: 20
-    beta_lmbd_1: 0
-    beta_lmbd_1_step: 0.001
-    beta_lmbd_2: 0
-    beta_lmbd_2_step: 0
+    beta_lmbd_1: # in reverse order for each layer (including the classifier)
+      - 0 # classifier
+      - 0 # gcn-layer-2
+      - 0 # gcn-layer-1
+    beta_lmbd_1_step:
+      - 0.001
+      - 0.01
+      - 0.02
+    beta_lmbd_2:
+      - 0
+      - 0
+      - 0
+    beta_lmbd_2_step: 
+      - 0
+      - 0
+      - 0
     weight_batch: 1024
     weight_lr: 0.1
-    weight_epoch: 50
+    weight_epoch: 20

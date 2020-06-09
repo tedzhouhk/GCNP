@@ -4,7 +4,8 @@ import time
 
 def lasso_plot(beta,weight,beta_loss,weight_loss,prune_params,title):
     fig,axs=plt.subplots(2,2)
-    # fig.suptitle(title)
+    fig.suptitle(title)
+    fig.subplots_adjust(top=0.8)
 
     # beta loss
     beta_loss=np.array(beta_loss)
@@ -30,4 +31,4 @@ def lasso_plot(beta,weight,beta_loss,weight_loss,prune_params,title):
     axs[1,1].text(0,0,text)
 
     fig.tight_layout()
-    fig.savefig('plot/'+time.strftime('%Y%d%m_%H:%M:%S')+'.png')
+    fig.savefig('plot/'+time.strftime('%Y%m%d_%H:%M:%S')+'_'+title+'.png')

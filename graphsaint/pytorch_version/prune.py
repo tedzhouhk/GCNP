@@ -40,7 +40,10 @@ class Lasso(nn.Module):
         with torch.no_grad():
             _,indices=torch.sort(torch.abs(self.beta),descending=False)
             self.beta[indices[:int(self.beta.shape[0]*budget)]]=0
-        return
+            mask_out=torch.ones(self.beta.shape[0],dtype=bool)
+            mask_out[indices[:int(self.beta.shape[0]*budget)]]=0
+            self.mask_out=mask_out
+        return mask_out
 
     def optimize_weight(self,inputs,ref,mask_in):
         self.weight_optimizer.zero_grad()
