@@ -1,5 +1,5 @@
 from graphsaint.globals import *
-from graphsaint.pytorch_version.models import GraphSAINT
+from graphsaint.pytorch_version.models import GraphSAINT, PrunedGraphSAINT
 from graphsaint.pytorch_version.minibatch import Minibatch
 from graphsaint.utils import *
 from graphsaint.metric import *
@@ -115,6 +115,8 @@ def get_model(train_phases, train_params, model, minibatch, minibatch_eval, mode
         if args_global.cpu_eval:
             model_eval.load_state_dict(torch.load(path_saver,map_location=lambda storage,loc:storage))
         else:
+            model_eval=model
+            minibatch_eval=minibatch
             model_eval.load_state_dict(torch.load(path_saver))
         loss_test, f1mic_test, f1mac_test = evaluate_full_batch(model_eval, minibatch_eval, mode='test')
         printf("Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}".format(f1mic_test, f1mac_test), style='red')
@@ -128,7 +130,10 @@ def get_activation(module, input, output):
     activation.append(input[0].detach())
 
 
-def prune(model_eval,prune_params,minibatch_eval):
+def prune(model,model_eval,prune_params,minibatch,minibatch_eval):
+    if not args_global.cpu_eval:
+        model_eval=model
+        minibatch_eval=minibatch
     mask=torch.ones(model_eval.num_classes,dtype=bool)
     layers=[model_eval.classifier]
     names=['classifier']
@@ -158,13 +163,15 @@ def prune(model_eval,prune_params,minibatch_eval):
                 feat=activation[0].cuda()
                 weight=torch.transpose(layer.f_lin[o].weight,0,1).cuda()
             else:
+                weight_split=[0]
                 feat=[activation[0].cuda()]
                 for _ in range(stack_feature):
                     feat.append(torch.sparse.mm(minibatch.adj_val_norm,feat[-1]))
                     feat=torch.cat(feat,0)
                 weight=list()
                 for p in range(stack_feature+1):
-                    weight.append(torch.transpose(layer.f_lin[o].weight,0,1).cuda())
+                    weight.append(torch.transpose(layer.f_lin[p].weight,0,1).cuda())
+                    weight_split.append(weight_split[-1]+weight[-1].shape[1])
                 weight=torch.cat(weight,1)
             ref=torch.mm(feat,weight).detach()
             lassos.append(Lasso(weight.shape[0],weight,prune_params['beta_lmbd_1'][i],prune_params['beta_lmbd_2'][i],prune_params['beta_lmbd_1_step'][i],prune_params['beta_lmbd_2_step'][i],prune_params['beta_lr'],prune_params['weight_lr']))
@@ -195,14 +202,86 @@ def prune(model_eval,prune_params,minibatch_eval):
                     print('    epoch {} loss: {}'.format(e,loss))
                     weight_loss.append(loss)
                 lassos[-1].norm()
+            lassos[-1].apply_beta()
             lasso_plot(lassos[-1].beta.detach().cpu().numpy(),lassos[-1].weight.detach().cpu().numpy(),beta_loss,weight_loss,prune_params,name+'_'+str(o))
+            if stack_feature==0:
+                layer.f_lin[o].weight.data.copy_(torch.transpose(lassos[-1].weight,0,1).data)
+            else:
+                for p in range(stack_feature+1):
+                    layer.f_lin[p].weight.data.copy_(torch.transpose(lassos[-1].weight[:,weight_split[p]:weight_split[p+1]],0,1).data)
+            loss_test,f1mic_test,f1mac_test=evaluate_full_batch(model_eval,minibatch_eval,mode='test')
+            printf("Pruned {} phase {} full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}".format(name,,o,f1mic_test,f1mac_test), style='red')
             del feat
             del weight
         mask=mask_out
-        # import pdb; pdb.set_trace()
+    # create pruned model
+    dims_in=list()
+    dims_out=list()
+    masks_in=list()
+    pruned_weights=list()
+    # dims for classifier
+    dims_in.append([torch.where(lassos[0].mask_out==True)[0].shape[0]])
+    dims_out.append([model_eval.num_classes])
+    # dims for each conv layer
+    lasso_idx=1
+    feat_length_per_order=model_eval._dims[1]
+    for i in range(len(model_eval.aggregators)):
+        dim_in=list()
+        dim_out=list()
+        mask_in=list()
+        pruned_weight=list()
+        if i!=len(model_eval.aggregators)-1:
+            # neighbor and self pruned together, dim equal in each order
+            for o in range(model_eval.aggregators[i].order+1):
+                dim_in.append(torch.where(lassos[lasso_idx].mask_out==True)[0].shape[0])
+                mask_in.append(lassos[lasso_idx-1].mask_out[o*feat_length_per_order:(o+1)*feat_length_per_order])
+                dim_out.append(torch.where(mask_in[-1]==True)[0].shape[0])
+                pruned_weight.append(lassos[lasso_idx].weight[:,o*feat_length_per_order:(o+1)*feat_length_per_order])
+            dims_in.insert(0,dim_in)
+            dims_out.insert(0,dim_out)
+            masks_in.insert(0,mask_in)
+            pruned_weights.insert(0,pruned_weight)
+            lasso_idx+=1
+        else:
+            # first layer, neighbor and self pruned seperately
+            for o in range(model_eval.aggregators[i].order+1):
+                mask_in.append(lassos[lasso_idx-1].mask_out[o*feat_length_per_order:(o+1)*feat_length_per_order])
+                dim_out.append(torch.where(mask_in[-1]==True)[0].shape[0])
+            masks_in.insert(0,mask_in)
+            dims_out.insert(0,dim_out)
+    mask_0=list()
+    dim_in=list()
+    pruned_weight=list()
+    for o in range(model_eval.aggregators[0].order+1):
+        mask_0.append(lassos[-1-o].mask_out)
+        dim_in.append(torch.where(lassos[-1-o].mask_out==True)[0].shape[0])
+        pruned_weight.append(lassos[-1-o].weight)
+    masks_in.insert(0,mask_0)
+    dims_in.insert(0,dim_in)
+    pruned_weights.insert(0,pruned_weight)
+    pruned_weights.append([lassos[0].weight])
+    masks_in.append([torch.ones(model_eval.num_classes,dtype=bool)])
+    printf("Pruned model dims:",style='red')
+    printf("  in: {}".format(str(dims_in)),style='red')
+    printf("  out: {}".format(str(dims_out)),style='red')
+    model_pruned=PrunedGraphSAINT(model_eval.num_classes,model_eval.arch_gcn,model_eval.train_params,model_eval.feat_full,model_eval.label_full,dims_in,dims_out,mask_0)
+    model_pruned_eval=PrunedGraphSAINT(model_eval.num_classes,model_eval.arch_gcn,model_eval.train_params,model_eval.feat_full,model_eval.label_full,dims_in,dims_out,mask_0,cpu_eval=True)
+    # load pruned weight 
+    model_pruned.aggregators[0].load_pruned_weight(masks_in[0],masks_in[1],model_eval.aggregators[0],pruned_weights[0],first_layer=True)
+    for i in range(1,len(model_pruned.aggregators)):
+        model_pruned.aggregators[i].load_pruned_weight(masks_in[i],masks_in[i+1],model_eval.aggregators[i],pruned_weights[i],first_layer=False)
+    model_pruned.classifier.load_pruned_weight(masks_in[-2],masks_in[-1],model_eval.classifier,pruned_weights[-1],first_layer=False)
+    if args_global.gpu >= 0:
+        model_pruned=model_pruned.cuda()
+    if args_global.cpu_eval:
+        model_pruned_eval.load_state_dict(model_pruned.cpu().state_dict())
+    else:
+        model_pruned_eval=model_pruned
+    loss_test,f1mic_test,f1mac_test=evaluate_full_batch(model_pruned_eval,minibatch_eval,mode='test')
+    printf("Pruned new model full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}".format(f1mic_test,f1mac_test), style='red')
 
 if __name__ == '__main__':
     train_params, train_phases, train_data, arch_gcn, prune_params = parse_n_prepare(args_global)
     model, minibatch, minibatch_eval, model_eval = prepare(train_data, train_params, arch_gcn)
     get_model(train_phases ,train_params, model, minibatch, minibatch_eval, model_eval)
-    prune(model_eval,prune_params,minibatch_eval)
+    prune(model,model_eval,prune_params,minibatch,minibatch_eval)

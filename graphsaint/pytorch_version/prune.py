@@ -61,3 +61,8 @@ class Lasso(nn.Module):
             self.weight/=normp
             self.beta*=normp
         return
+
+    def apply_beta(self):
+        with torch.no_grad():
+            self.weight*=self.beta.unsqueeze(1)
+        return
