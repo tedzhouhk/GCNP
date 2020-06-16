@@ -67,6 +67,7 @@ class HighOrderAggregator(nn.Module):
             feat_out = torch.cat(feat_partial,1)
         else:
             raise NotImplementedError
+        # print(feat_out)
         return adj_norm, feat_out       # return adj_norm to support Sequential
 
 class PrunedHighOrderAggregator(nn.Module):
@@ -120,6 +121,8 @@ class PrunedHighOrderAggregator(nn.Module):
             feat_hop=list()
             for o in range(self.order+1):
                 feat_hop.append(feat_in[:,masks[o]])
+                for _ in range(o):
+                    feat_hop[o]=self._spmm(adj_norm,feat_hop[o])
         else:
             feat_hop = [feat_in]
             for o in range(self.order):
@@ -129,6 +132,7 @@ class PrunedHighOrderAggregator(nn.Module):
             feat_out = torch.cat(feat_partial,1)
         else:
             raise NotImplementedError
+        # print(feat_out)
         return adj_norm, feat_out, first_layer, masks      # return adj_norm to support Sequential
 
     def load_pruned_weight(self,mask_in,mask_out,ref_layer,ref_weight,first_layer=False):

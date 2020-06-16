@@ -102,8 +102,10 @@ def train(train_phases, model, minibatch, minibatch_eval, model_eval, path_saver
     printf("Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}".format(f1mic_test, f1mac_test), style='red')
     printf("Total training time: {:6.2f} sec".format(time_train), style='red')
 
-def get_model(train_phases, train_params, model, minibatch, minibatch_eval, model_eval):
+def get_model(train_phases, train_params, arch_gcn, model, minibatch, minibatch_eval, model_eval):
     text=args_global.data_prefix
+    for k,v in arch_gcn.items():
+        text+=str(k)+str(v)
     for train_phase in train_phases:
         for k,v in train_phase.items():
             text+=str(k)+str(v)
@@ -191,7 +193,7 @@ def prune(model,model_eval,prune_params,minibatch,minibatch_eval):
                     print('    epoch {} loss: {}'.format(e,loss))
                     beta_loss.append(loss)
                     lassos[-1].lmbd_step()
-                mask_out=lassos[-1].clip_beta(prune_params['budget'])
+                mask_out=lassos[-1].clip_beta(1-prune_params['budget'])
                 # optimize weight
                 print('  optimizing weight ...')
                 for e in range(prune_params['weight_epoch']):
@@ -204,13 +206,14 @@ def prune(model,model_eval,prune_params,minibatch,minibatch_eval):
                 lassos[-1].norm()
             lassos[-1].apply_beta()
             lasso_plot(lassos[-1].beta.detach().cpu().numpy(),lassos[-1].weight.detach().cpu().numpy(),beta_loss,weight_loss,prune_params,name+'_'+str(o))
+            # evaluate acc on existing model
             if stack_feature==0:
                 layer.f_lin[o].weight.data.copy_(torch.transpose(lassos[-1].weight,0,1).data)
             else:
                 for p in range(stack_feature+1):
                     layer.f_lin[p].weight.data.copy_(torch.transpose(lassos[-1].weight[:,weight_split[p]:weight_split[p+1]],0,1).data)
             loss_test,f1mic_test,f1mac_test=evaluate_full_batch(model_eval,minibatch_eval,mode='test')
-            printf("Pruned {} phase {} full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}".format(name,,o,f1mic_test,f1mac_test), style='red')
+            printf("Pruned {} phase {} full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}".format(name,o,f1mic_test,f1mac_test), style='red')
             del feat
             del weight
         mask=mask_out
@@ -252,7 +255,7 @@ def prune(model,model_eval,prune_params,minibatch,minibatch_eval):
     mask_0=list()
     dim_in=list()
     pruned_weight=list()
-    for o in range(model_eval.aggregators[0].order+1):
+    for o in reversed(range(model_eval.aggregators[0].order+1)):
         mask_0.append(lassos[-1-o].mask_out)
         dim_in.append(torch.where(lassos[-1-o].mask_out==True)[0].shape[0])
         pruned_weight.append(lassos[-1-o].weight)
@@ -277,11 +280,12 @@ def prune(model,model_eval,prune_params,minibatch,minibatch_eval):
         model_pruned_eval.load_state_dict(model_pruned.cpu().state_dict())
     else:
         model_pruned_eval=model_pruned
+    # import pdb; pdb.set_trace()
     loss_test,f1mic_test,f1mac_test=evaluate_full_batch(model_pruned_eval,minibatch_eval,mode='test')
     printf("Pruned new model full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}".format(f1mic_test,f1mac_test), style='red')
 
 if __name__ == '__main__':
     train_params, train_phases, train_data, arch_gcn, prune_params = parse_n_prepare(args_global)
     model, minibatch, minibatch_eval, model_eval = prepare(train_data, train_params, arch_gcn)
-    get_model(train_phases ,train_params, model, minibatch, minibatch_eval, model_eval)
+    get_model(train_phases ,train_params, arch_gcn, model, minibatch, minibatch_eval, model_eval)
     prune(model,model_eval,prune_params,minibatch,minibatch_eval)
