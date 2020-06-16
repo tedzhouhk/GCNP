@@ -17,13 +17,15 @@ def evaluate_full_batch(model, minibatch, mode='val'):
     Full batch evaluation: for validation and test sets only.
     When calculating the F1 score, we will mask the relevant root nodes.
     """
+    time_s=time.time()
     loss,preds,labels = model.eval_step(*minibatch.one_batch(mode=mode))
+    time_e=time.time()
     node_val_test = minibatch.node_val if mode=='val' else minibatch.node_test
     f1_scores = calc_f1(to_numpy(labels[node_val_test]),to_numpy(preds[node_val_test]),model.sigmoid_loss)
     node_test=minibatch.node_test
     f1_test=calc_f1(to_numpy(labels[node_test]),to_numpy(preds[node_test]),model.sigmoid_loss)
     # printf(' ******TEST:     loss = {:.4f}\tmic = {:.4f}\tmac = {:.4f}'.format(loss,f1_test[0],f1_test[1]),style='yellow')
-    return loss, f1_scores[0], f1_scores[1]
+    return loss, f1_scores[0], f1_scores[1], time_e-time_s
 
 
 
@@ -77,9 +79,9 @@ def train(train_phases, model, minibatch, minibatch_eval, model_eval, path_saver
                 model_eval.load_state_dict(torch.load('tmp.pkl',map_location=lambda storage, loc: storage))
             else:
                 model_eval=model
-            loss_val, f1mic_val, f1mac_val = evaluate_full_batch(model_eval, minibatch_eval, mode='val')
+            loss_val, f1mic_val, f1mac_val, f_time = evaluate_full_batch(model_eval, minibatch_eval, mode='val')
             printf(' TRAIN (Ep avg): loss = {:.4f}\tmic = {:.4f}\tmac = {:.4f}\ttrain time = {:.4f} sec'.format(f_mean(l_loss_tr),f_mean(l_f1mic_tr),f_mean(l_f1mac_tr),time_train_ep))
-            printf(' VALIDATION:     loss = {:.4f}\tmic = {:.4f}\tmac = {:.4f}'.format(loss_val,f1mic_val,f1mac_val),style='yellow')
+            printf(' VALIDATION:     loss = {:.4f}\tmic = {:.4f}\tmac = {:.4f}\ttime = {:.2f}s'.format(loss_val,f1mic_val,f1mac_val,f_time),style='yellow')
             if f1mic_val > f1mic_best:
                 f1mic_best, ep_best = f1mic_val, e
                 if not os.path.exists(dir_saver):
@@ -96,10 +98,10 @@ def train(train_phases, model, minibatch, minibatch_eval, model_eval, path_saver
             model.load_state_dict(torch.load(path_saver))
             model_eval=model
         printf('  Restoring model ...', style='yellow')
-    loss_val, f1mic_val, f1mac_val = evaluate_full_batch(model_eval, minibatch_eval, mode='val')
-    printf("Full validation (Epoch {:4d}): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}".format(ep_best, f1mic_val, f1mac_val), style='red')
-    loss_test, f1mic_test, f1mac_test = evaluate_full_batch(model_eval, minibatch_eval, mode='test')
-    printf("Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}".format(f1mic_test, f1mac_test), style='red')
+    loss_val, f1mic_val, f1mac_val, f_time = evaluate_full_batch(model_eval, minibatch_eval, mode='val')
+    printf("Full validation (Epoch {:4d}): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.2f}s".format(ep_best, f1mic_val, f1mac_val, f_time), style='red')
+    loss_test, f1mic_test, f1mac_test, f_time = evaluate_full_batch(model_eval, minibatch_eval, mode='test')
+    printf("Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.2f}s".format(f1mic_test, f1mac_test, f_time), style='red')
     printf("Total training time: {:6.2f} sec".format(time_train), style='red')
 
 def get_model(train_phases, train_params, arch_gcn, model, minibatch, minibatch_eval, model_eval):
@@ -120,8 +122,8 @@ def get_model(train_phases, train_params, arch_gcn, model, minibatch, minibatch_
             model_eval=model
             minibatch_eval=minibatch
             model_eval.load_state_dict(torch.load(path_saver))
-        loss_test, f1mic_test, f1mac_test = evaluate_full_batch(model_eval, minibatch_eval, mode='test')
-        printf("Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}".format(f1mic_test, f1mac_test), style='red')
+        loss_test, f1mic_test, f1mac_test, f_time = evaluate_full_batch(model_eval, minibatch_eval, mode='test')
+        printf("Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.2f}s".format(f1mic_test, f1mac_test, f_time), style='red')
     else:
         train(train_phases, model, minibatch, minibatch_eval, model_eval, path_saver=path_saver)
         
@@ -212,8 +214,8 @@ def prune(model,model_eval,prune_params,minibatch,minibatch_eval):
             else:
                 for p in range(stack_feature+1):
                     layer.f_lin[p].weight.data.copy_(torch.transpose(lassos[-1].weight[:,weight_split[p]:weight_split[p+1]],0,1).data)
-            loss_test,f1mic_test,f1mac_test=evaluate_full_batch(model_eval,minibatch_eval,mode='test')
-            printf("Pruned {} phase {} full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}".format(name,o,f1mic_test,f1mac_test), style='red')
+            loss_test,f1mic_test,f1mac_test,f_time=evaluate_full_batch(model_eval,minibatch_eval,mode='test')
+            printf("Pruned {} phase {} full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.2f}s".format(name,o,f1mic_test,f1mac_test,f_time), style='red')
             del feat
             del weight
         mask=mask_out
@@ -281,11 +283,13 @@ def prune(model,model_eval,prune_params,minibatch,minibatch_eval):
     else:
         model_pruned_eval=model_pruned
     # import pdb; pdb.set_trace()
-    loss_test,f1mic_test,f1mac_test=evaluate_full_batch(model_pruned_eval,minibatch_eval,mode='test')
-    printf("Pruned new model full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}".format(f1mic_test,f1mac_test), style='red')
+    loss_test,f1mic_test,f1mac_test,f_time=evaluate_full_batch(model_pruned_eval,minibatch_eval,mode='test')
+    printf("Pruned new model full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.2f}s".format(f1mic_test,f1mac_test,f_time), style='red')
+    return model_pruned,model_pruned_eval
 
 if __name__ == '__main__':
-    train_params, train_phases, train_data, arch_gcn, prune_params = parse_n_prepare(args_global)
+    train_params, train_phases, retrain_phases, train_data, arch_gcn, prune_params = parse_n_prepare(args_global)
     model, minibatch, minibatch_eval, model_eval = prepare(train_data, train_params, arch_gcn)
     get_model(train_phases ,train_params, arch_gcn, model, minibatch, minibatch_eval, model_eval)
-    prune(model,model_eval,prune_params,minibatch,minibatch_eval)
+    model_pruned,model_pruned_eval=prune(model,model_eval,prune_params,minibatch,minibatch_eval)
+    train(retrain_phases,model_pruned,minibatch,minibatch_eval,model_pruned_eval)

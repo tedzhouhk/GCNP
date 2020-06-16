@@ -69,6 +69,7 @@ def parse_n_prepare(flags):
     train_params = {'lr':0.01,'weight_decay':0.,'norm_loss':True,'norm_aggr':True,'q_threshold':50,'q_offset':0}
     train_params.update(train_config['params'][0])
     train_phases = train_config['phase']
+    retrain_phases=train_config['retrain_phase']
     prune_params=train_config['prune'][0]
     for ph in train_phases:
         assert 'end' in ph
@@ -77,7 +78,7 @@ def parse_n_prepare(flags):
     temp_data = load_data(flags.data_prefix)
     train_data = process_graph_data(*temp_data)
     print("Done loading training data..")
-    return train_params,train_phases,train_data,arch_gcn,prune_params
+    return train_params,train_phases,retrain_phases,train_data,arch_gcn,prune_params
 
 
 
