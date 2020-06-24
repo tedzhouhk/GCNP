@@ -81,6 +81,7 @@ class GraphSAINT(nn.Module):
         label_subg = self.label_full[node_subgraph]
         label_subg_converted = label_subg if self.sigmoid_loss else self.label_full_cat[node_subgraph]
         _, emb_subg = self.conv_layers((adj_subgraph, feat_subg))
+        # import pdb; pdb.set_trace()
         emb_subg_norm = F.normalize(emb_subg, p=2, dim=1)
         pred_subg = self.classifier((None, emb_subg_norm))[1]
         return pred_subg, label_subg, label_subg_converted
@@ -108,7 +109,13 @@ class GraphSAINT(nn.Module):
         return aggregators
 
     def predict(self, preds):
-        return nn.Sigmoid()(preds) if self.sigmoid_loss else F.softmax(preds, dim=1)
+        # return nn.Sigmoid()(preds) if self.sigmoid_loss else F.softmax(preds, dim=1)
+        if self.sigmoid_loss:
+            preds.sigmoid_()
+        else:
+            preds.exp_()
+            preds/=torch.sum(preds,dim=1,keepdim=True)
+        return preds
         
         
     def train_step(self, node_subgraph, adj_subgraph, norm_loss_subgraph):
@@ -130,9 +137,35 @@ class GraphSAINT(nn.Module):
         """
         self.eval()
         with torch.no_grad():
-            preds,labels,labels_converted = self(node_subgraph, adj_subgraph)
-            loss = self._loss(preds,labels_converted,norm_loss_subgraph)
-        return loss,self.predict(preds),labels
+            # preds,labels,labels_converted = self(node_subgraph, adj_subgraph)
+            # loss = self._loss(preds,labels_converted,norm_loss_subgraph)
+            assert node_subgraph.shape[0]==self.feat_full.shape[0]
+            _feat=self.feat_full
+            for layer in self.aggregators:
+                feat=layer.inplace_forward(_feat,adj_subgraph)
+                del _feat
+                _feat=feat
+            F.normalize(_feat,p=2,dim=1,out=_feat)
+            preds=self.classifier.inplace_forward(_feat)
+            del _feat
+            labels_converted=self.label_full if self.sigmoid_loss else self.label_full_cat
+            loss=self._loss(preds,labels_converted,norm_loss_subgraph)
+        return loss,self.predict(preds),self.label_full
+
+    def get_input_activation(self,node_subgraph,adj_subgraph,norm_loss_subgraph,layer_step):
+        self.eval()
+        with torch.no_grad():
+            assert node_subgraph.shape[0]==self.feat_full.shape[0]
+            if layer_step==0:
+                return self.feat_full
+            else:
+                _feat=self.feat_full
+                for layer in self.aggregators[:layer_step]:
+                    feat=layer.inplace_forward(_feat,adj_subgraph)
+                    del _feat
+                    _feat=feat
+                return _feat
+        return
 
 class PrunedGraphSAINT(nn.Module):
     def __init__(self, num_classes, arch_gcn, train_params, feat_full, label_full, dims_in, dims_out, masks, cpu_eval=False):
@@ -222,8 +255,13 @@ class PrunedGraphSAINT(nn.Module):
         return aggregators
 
     def predict(self, preds):
-        return nn.Sigmoid()(preds) if self.sigmoid_loss else F.softmax(preds, dim=1)
-        
+        # return nn.Sigmoid()(preds) if self.sigmoid_loss else F.softmax(preds, dim=1)
+        if self.sigmoid_loss:
+            preds.sigmoid_()
+        else:
+            preds.exp_()
+            preds/=torch.sum(preds,dim=1,keepdim=True)
+        return preds
         
     def train_step(self, node_subgraph, adj_subgraph, norm_loss_subgraph):
         """
@@ -244,6 +282,19 @@ class PrunedGraphSAINT(nn.Module):
         """
         self.eval()
         with torch.no_grad():
-            preds,labels,labels_converted = self(node_subgraph, adj_subgraph)
-            loss = self._loss(preds,labels_converted,norm_loss_subgraph)
-        return loss,self.predict(preds),labels
+            # preds,labels,labels_converted = self(node_subgraph, adj_subgraph)
+            # loss = self._loss(preds,labels_converted,norm_loss_subgraph)
+            assert node_subgraph.shape[0]==self.feat_full.shape[0]
+            _feat=self.feat_full
+            first_layer=True
+            for layer in self.aggregators:
+                feat=layer.inplace_forward(_feat,adj_subgraph,first_layer,self.masks)
+                first_layer=False
+                del _feat
+                _feat=feat
+            F.normalize(_feat,p=2,dim=1,out=_feat)
+            preds=self.classifier.inplace_forward(_feat)
+            del _feat
+            labels_converted=self.label_full if self.sigmoid_loss else self.label_full_cat
+            loss=self._loss(preds,labels_converted,norm_loss_subgraph)
+        return loss,self.predict(preds),self.label_full

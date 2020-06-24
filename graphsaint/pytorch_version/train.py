@@ -6,6 +6,7 @@ from graphsaint.metric import *
 from graphsaint.pytorch_version.utils import *
 from graphsaint.pytorch_version.prune import Lasso
 from graphsaint.pytorch_version.plot import *
+from graphsaint.pytorch_version.gpu_profile import gpu_profile
 import hashlib
 import torch
 import time
@@ -22,9 +23,11 @@ def evaluate_full_batch(model, minibatch, mode='val'):
     time_e=time.time()
     node_val_test = minibatch.node_val if mode=='val' else minibatch.node_test
     f1_scores = calc_f1(to_numpy(labels[node_val_test]),to_numpy(preds[node_val_test]),model.sigmoid_loss)
-    node_test=minibatch.node_test
-    f1_test=calc_f1(to_numpy(labels[node_test]),to_numpy(preds[node_test]),model.sigmoid_loss)
+    # node_test=minibatch.node_test
+    # f1_test=calc_f1(to_numpy(labels[node_test]),to_numpy(preds[node_test]),model.sigmoid_loss)
     # printf(' ******TEST:     loss = {:.4f}\tmic = {:.4f}\tmac = {:.4f}'.format(loss,f1_test[0],f1_test[1]),style='yellow')
+    del labels
+    del preds
     return loss, f1_scores[0], f1_scores[1], time_e-time_s
 
 
@@ -81,7 +84,7 @@ def train(train_phases, model, minibatch, minibatch_eval, model_eval, path_saver
                 model_eval=model
             loss_val, f1mic_val, f1mac_val, f_time = evaluate_full_batch(model_eval, minibatch_eval, mode='val')
             printf(' TRAIN (Ep avg): loss = {:.4f}\tmic = {:.4f}\tmac = {:.4f}\ttrain time = {:.4f} sec'.format(f_mean(l_loss_tr),f_mean(l_f1mic_tr),f_mean(l_f1mac_tr),time_train_ep))
-            printf(' VALIDATION:     loss = {:.4f}\tmic = {:.4f}\tmac = {:.4f}\ttime = {:.2f}s'.format(loss_val,f1mic_val,f1mac_val,f_time),style='yellow')
+            printf(' VALIDATION:     loss = {:.4f}\tmic = {:.4f}\tmac = {:.4f}\ttime = {:.4f}s'.format(loss_val,f1mic_val,f1mac_val,f_time),style='yellow')
             if f1mic_val > f1mic_best:
                 f1mic_best, ep_best = f1mic_val, e
                 if not os.path.exists(dir_saver):
@@ -99,9 +102,9 @@ def train(train_phases, model, minibatch, minibatch_eval, model_eval, path_saver
             model_eval=model
         printf('  Restoring model ...', style='yellow')
     loss_val, f1mic_val, f1mac_val, f_time = evaluate_full_batch(model_eval, minibatch_eval, mode='val')
-    printf("Full validation (Epoch {:4d}): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.2f}s".format(ep_best, f1mic_val, f1mac_val, f_time), style='red')
+    printf("Full validation (Epoch {:4d}): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.4f}s".format(ep_best, f1mic_val, f1mac_val, f_time), style='red')
     loss_test, f1mic_test, f1mac_test, f_time = evaluate_full_batch(model_eval, minibatch_eval, mode='test')
-    printf("Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.2f}s".format(f1mic_test, f1mac_test, f_time), style='red')
+    printf("Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.4f}s".format(f1mic_test, f1mac_test, f_time), style='red')
     printf("Total training time: {:6.2f} sec".format(time_train), style='red')
 
 def get_model(train_phases, train_params, arch_gcn, model, minibatch, minibatch_eval, model_eval):
@@ -123,15 +126,15 @@ def get_model(train_phases, train_params, arch_gcn, model, minibatch, minibatch_
             minibatch_eval=minibatch
             model_eval.load_state_dict(torch.load(path_saver))
         loss_test, f1mic_test, f1mac_test, f_time = evaluate_full_batch(model_eval, minibatch_eval, mode='test')
-        printf("Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.2f}s".format(f1mic_test, f1mac_test, f_time), style='red')
+        printf("Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.4f}s".format(f1mic_test, f1mac_test, f_time), style='red')
     else:
         train(train_phases, model, minibatch, minibatch_eval, model_eval, path_saver=path_saver)
         
 
-activation=[]
-def get_activation(module, input, output):
-    activation.clear()
-    activation.append(input[0].detach())
+# activation=[]
+# def get_activation(module, input, output):
+#     activation.clear()
+#     activation.append(input[0].detach())
 
 
 def prune(model,model_eval,prune_params,minibatch,minibatch_eval):
@@ -141,37 +144,80 @@ def prune(model,model_eval,prune_params,minibatch,minibatch_eval):
     mask=torch.ones(model_eval.num_classes,dtype=bool)
     layers=[model_eval.classifier]
     names=['classifier']
+    layer_steps=[len(model_eval.aggregators)]
     for i in reversed(range(len(model_eval.aggregators))):
         layers.append(model_eval.aggregators[i])
         names.append('conv{}'.format(i))
+        layer_steps.append(i)
     lassos=list()
     for i in range(len(layers)):
         layer=layers[i]
         name=names[i]
+        layer_step=layer_steps[i]
         if i==len(layers)-1:
             # for first GCN layer, prune each order seperately
             optimize_phase=list(range(layer.order+1))
             stack_feature=0
             mask=torch.split(mask,split_size_or_sections=int(mask.shape[0]/(layer.order+1)))
+            if prune_params['dynamic']=='static':
+                budgets=[1-prune_params['budget'][i]]*(layer.order+1)
+            elif prune_params['dynamic']=='linear':
+                split=layer.order+1
+                dim=int(lassos[-1].beta.shape[0]/split)
+                total=torch.where(lassos[-1].mask_out==True)[0].shape[0]
+                budgets=list()
+                for o in range(split):
+                    budgets.append(1-torch.where(lassos[-1].mask_out[o*dim:(o+1)*dim]==True)[0].shape[0]/total*split*prune_params['budget'][i])
+                # budgets=[0.65]
+                # budgets.append(1-budgets[-1])
+                # budgets=np.array(budgets)
+                # budgets/=budgets.mean()
+                # budgets*=prune_params['budget'][i]
+                # budgets=1-budgets
+            elif prune_params['dynamic']=='svd':
+                budgets=list()
+                split=layer.order+1
+                dim=int(lassos[-1].beta.shape[0]/split)
+                for o in range(split):
+                    weight=layer.f_lin[o].weight.T[:,mask_out[o*dim:(o+1)*dim]]
+                    sv=torch.svd(weight,compute_uv=False)[1]
+                    sv_sum=torch.sum(sv)
+                    ratio=1
+                    while ratio<sv.shape[0]:
+                        if torch.sum(sv[:ratio])>sv_sum*0.9:
+                            break
+                        ratio+=1
+                    budgets.append(ratio/sv.shape[0])
+                budgets=np.array(budgets)
+                budgets/=budgets.mean()
+                budgets*=prune_params['budget'][i]
+                budgets=1-budgets
         else:
             # for middle GCN layers, prune all orders jointly
             optimize_phase=[0]
             stack_feature=layer.order
             mask=[mask]
+            budgets=[1-prune_params['budget'][i]]
         for o in optimize_phase:
             print('optimizing {} phase {}:'.format(name,o))
-            handle=layer.f_lin[o].register_forward_hook(get_activation)
-            evaluate_full_batch(model_eval,minibatch_eval,mode='val')
-            handle.remove()
+            # handle=layer.f_lin[o].register_forward_hook(get_activation)
+            # evaluate_full_batch(model_eval,minibatch_eval,mode='val')
+            # handle.remove()
+            activation=model_eval.get_input_activation(*minibatch.one_batch(mode='val'),layer_step)
             if stack_feature==0:
-                feat=activation[0].cuda()
+                feat=activation.detach().cuda()
+                del activation
+                for _ in range(o):
+                    feat=torch.sparse.mm(minibatch.adj_val_norm,feat)
                 weight=torch.transpose(layer.f_lin[o].weight,0,1).cuda()
             else:
                 weight_split=[0]
-                feat=[activation[0].cuda()]
+                _feat=[activation.detach().cuda()]
+                del activation
                 for _ in range(stack_feature):
-                    feat.append(torch.sparse.mm(minibatch.adj_val_norm,feat[-1]))
-                    feat=torch.cat(feat,0)
+                    _feat.append(torch.sparse.mm(minibatch.adj_val_norm,_feat[-1]))
+                feat=torch.cat(_feat,0)
+                del _feat
                 weight=list()
                 for p in range(stack_feature+1):
                     weight.append(torch.transpose(layer.f_lin[p].weight,0,1).cuda())
@@ -195,7 +241,7 @@ def prune(model,model_eval,prune_params,minibatch,minibatch_eval):
                     print('    epoch {} loss: {}'.format(e,loss))
                     beta_loss.append(loss)
                     lassos[-1].lmbd_step()
-                mask_out=lassos[-1].clip_beta(1-prune_params['budget'])
+                mask_out=lassos[-1].clip_beta(budgets[o],prune_params['beta_clip'])
                 # optimize weight
                 print('  optimizing weight ...')
                 for e in range(prune_params['weight_epoch']):
@@ -208,16 +254,18 @@ def prune(model,model_eval,prune_params,minibatch,minibatch_eval):
                 lassos[-1].norm()
             lassos[-1].apply_beta()
             lasso_plot(lassos[-1].beta.detach().cpu().numpy(),lassos[-1].weight.detach().cpu().numpy(),beta_loss,weight_loss,prune_params,name+'_'+str(o))
+            del feat
+            del weight
+            del ref
             # evaluate acc on existing model
             if stack_feature==0:
                 layer.f_lin[o].weight.data.copy_(torch.transpose(lassos[-1].weight,0,1).data)
             else:
                 for p in range(stack_feature+1):
                     layer.f_lin[p].weight.data.copy_(torch.transpose(lassos[-1].weight[:,weight_split[p]:weight_split[p+1]],0,1).data)
+            # print_allocated_tensors()
             loss_test,f1mic_test,f1mac_test,f_time=evaluate_full_batch(model_eval,minibatch_eval,mode='test')
-            printf("Pruned {} phase {} full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.2f}s".format(name,o,f1mic_test,f1mac_test,f_time), style='red')
-            del feat
-            del weight
+            printf("Pruned {} phase {} full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.4f}s".format(name,o,f1mic_test,f1mac_test,f_time), style='red')
         mask=mask_out
     # create pruned model
     dims_in=list()
@@ -282,12 +330,13 @@ def prune(model,model_eval,prune_params,minibatch,minibatch_eval):
         model_pruned_eval.load_state_dict(model_pruned.cpu().state_dict())
     else:
         model_pruned_eval=model_pruned
-    # import pdb; pdb.set_trace()
     loss_test,f1mic_test,f1mac_test,f_time=evaluate_full_batch(model_pruned_eval,minibatch_eval,mode='test')
     printf("Pruned new model full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.2f}s".format(f1mic_test,f1mac_test,f_time), style='red')
     return model_pruned,model_pruned_eval
 
 if __name__ == '__main__':
+    # os.environ['CUDA_LAUNCH_BLOCKING']='1'
+    # sys.settrace(gpu_profile)
     train_params, train_phases, retrain_phases, train_data, arch_gcn, prune_params = parse_n_prepare(args_global)
     model, minibatch, minibatch_eval, model_eval = prepare(train_data, train_params, arch_gcn)
     get_model(train_phases ,train_params, arch_gcn, model, minibatch, minibatch_eval, model_eval)

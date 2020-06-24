@@ -36,13 +36,16 @@ class Lasso(nn.Module):
         self.lmbd_1+=self.lmbd_1_step
         self.lmbd_2+=self.lmbd_2_step
     
-    def clip_beta(self,budget):
+    def clip_beta(self,budget,beta_clip=False):
         with torch.no_grad():
             _,indices=torch.sort(torch.abs(self.beta),descending=False)
             self.beta[indices[:int(self.beta.shape[0]*budget)]]=0
             mask_out=torch.ones(self.beta.shape[0],dtype=bool)
             mask_out[indices[:int(self.beta.shape[0]*budget)]]=0
             self.mask_out=mask_out
+            if beta_clip:
+                # clip to mean of remaining beta
+                torch.clamp(self.beta,max=torch.mean(self.beta[mask_out]))
         return mask_out
 
     def optimize_weight(self,inputs,ref,mask_in):

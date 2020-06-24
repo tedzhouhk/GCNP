@@ -6,6 +6,8 @@ import scipy.sparse as sp
 F_ACT = {'relu': nn.ReLU(),
          'I': lambda x:x}
 
+F_ACT_I = {'relu':nn.ReLU(inplace=True),'I':lambda x:x}
+
 
 class HighOrderAggregator(nn.Module):
     def __init__(self, dim_in, dim_out, dropout=0., act='relu', \
@@ -13,6 +15,7 @@ class HighOrderAggregator(nn.Module):
         super(HighOrderAggregator,self).__init__()
         self.order,self.aggr = order,aggr
         self.act, self.bias = F_ACT[act], bias
+        self.inplace_act=F_ACT_I[act]
         self.dropout = dropout
         self.f_lin = list()
         self.f_bias = list()
@@ -34,7 +37,7 @@ class HighOrderAggregator(nn.Module):
 
     def _spmm(self, adj_norm, _feat):
         # alternative ways: use geometric.propagate or torch.mm
-        return torch.sparse.mm(adj_norm, _feat)
+        return torch.sparse.mm(adj_norm,_feat)
 
     def _f_feat_trans(self, _feat, _id):
         feat=self.act(self.f_lin[_id](_feat) + self.f_bias[_id])
@@ -67,8 +70,45 @@ class HighOrderAggregator(nn.Module):
             feat_out = torch.cat(feat_partial,1)
         else:
             raise NotImplementedError
-        # print(feat_out)
         return adj_norm, feat_out       # return adj_norm to support Sequential
+        
+    def inplace_forward(self,feat,adj=None):
+        feat_partial=list()
+        for o in range(self.order+1):
+            _feat=feat
+            for i in range(o):
+                __feat=self._spmm(adj,_feat)
+                del _feat
+                _feat=__feat
+                if i==o-1:
+                    del __feat
+            __feat=torch.mm(_feat,self.f_lin[o].weight.T)
+            del _feat
+            __feat.add_(self.f_bias[o])
+            self.inplace_act(__feat)
+            if self.bias=='norm':
+                mean=__feat.mean(dim=1).view(__feat.shape[0],1)
+                var=__feat.var(dim=1,unbiased=False).view(__feat.shape[0],1)+1e-9
+                var.rsqrt_()
+                __feat.add_(mean,alpha=-1)
+                __feat.mul_(self.scale[o])
+                __feat.mul_(var)
+                __feat.add_(self.offset[o])
+                del mean
+                del var
+            feat_partial.append(__feat)
+            del __feat
+        if self.aggr=='concat':
+            out=torch.cat(feat_partial,1)
+            del feat_partial
+        elif self.aggr=='mean':
+            out=feat_partial[0]
+            for o in range(len(feat_partial)-1):
+                out.add_(feat_partial[o+1])
+            del feat_partial
+        else:
+            raise NotImplementedError
+        return out
 
 class PrunedHighOrderAggregator(nn.Module):
     def __init__(self, dim_in, dim_out, dropout=0., act='relu', \
@@ -76,6 +116,7 @@ class PrunedHighOrderAggregator(nn.Module):
         super(PrunedHighOrderAggregator,self).__init__()
         self.order,self.aggr = order,aggr
         self.act, self.bias = F_ACT[act], bias
+        self.inplace_act=F_ACT_I[act]
         self.dropout = dropout
         self.f_lin = list()
         self.f_bias = list()
@@ -148,6 +189,47 @@ class PrunedHighOrderAggregator(nn.Module):
                 self.f_bias[o].data.copy_(ref_layer.f_bias[o][mask_out[o]].data)
                 self.scale[o].data.copy_(ref_layer.scale[o][mask_out[o]].data)
                 self.offset[o].data.copy_(ref_layer.offset[o][mask_out[o]].data)
+
+    def inplace_forward(self,feat,adj=None,first_layer=False,masks=None):
+        feat_partial=list()
+        for o in range(self.order+1):
+            if first_layer:
+                _feat=feat[:,masks[o]]
+            else:
+                _feat=feat
+            for i in range(o):
+                __feat=self._spmm(adj,_feat)
+                del _feat
+                _feat=__feat
+                if i==o-1:
+                    del __feat
+            __feat=torch.mm(_feat,self.f_lin[o].weight.T)
+            del _feat
+            __feat.add_(self.f_bias[o])
+            self.inplace_act(__feat)
+            if self.bias=='norm':
+                mean=__feat.mean(dim=1).view(__feat.shape[0],1)
+                var=__feat.var(dim=1,unbiased=False).view(__feat.shape[0],1)+1e-9
+                var.rsqrt_()
+                __feat.add_(mean,alpha=-1)
+                __feat.mul_(self.scale[o])
+                __feat.mul_(var)
+                __feat.add_(self.offset[o])
+                del mean
+                del var
+            feat_partial.append(__feat)
+            del __feat
+        if self.aggr=='concat':
+            out=torch.cat(feat_partial,1)
+            del feat_partial
+        elif self.aggr=='mean':
+            out=feat_partial[0]
+            for o in range(len(feat_partial)-1):
+                out.add_(feat_partial[o+1])
+            del feat_partial
+        else:
+            raise NotImplementedError
+        return out
 
 
 class JumpingKnowledge(nn.Module):
