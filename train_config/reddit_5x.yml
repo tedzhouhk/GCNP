@@ -16,7 +16,7 @@ phase:
     num_root: 2000
     depth: 4
 prune:
-  - budget: 0.5
+  - budget: 0.2
     dynamic: 'static'
     total_step: 1
     beta_clip: false
@@ -28,9 +28,9 @@ prune:
       - 0 # gcn-layer-2
       - 0 # gcn-layer-1
     beta_lmbd_1_step:
-      - 0.0001
-      - 0.001
+      - 0.0002
       - 0.002
+      - 0.004
     beta_lmbd_2:
       - 0
       - 0

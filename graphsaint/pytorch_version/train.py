@@ -30,7 +30,13 @@ def evaluate_full_batch(model, minibatch, mode='val'):
     del preds
     return loss, f1_scores[0], f1_scores[1], time_e-time_s
 
-
+def evaluate_minibatch(model_eval,minibatch_eval,inf_params,mode='test'):
+    preds,labels,t_forward,t_sampling=model_eval.minibatched_eval(minibatch_eval.node_test,minibatch_eval.adj_full_norm_sp,inf_params)
+    preds=np.concatenate(preds,axis=0)
+    labels=np.concatenate(labels,axis=0)
+    f1_scores = calc_f1(labels,preds,model_eval.sigmoid_loss)
+    time_e=time.time()
+    return f1_scores[0],f1_scores[1],t_forward,t_sampling
 
 def prepare(train_data,train_params,arch_gcn):
     adj_full,adj_train,adj_val,feat_full,class_arr,role = train_data
@@ -50,7 +56,7 @@ def prepare(train_data,train_params,arch_gcn):
     return model, minibatch, minibatch_eval, model_eval
 
 
-def train(train_phases, model, minibatch, minibatch_eval, model_eval, path_saver=None):
+def train(train_phases, model, minibatch, minibatch_eval, model_eval, path_saver=None, inf_params=None):
     if not args_global.cpu_eval:
         minibatch_eval=minibatch
     epoch_ph_start = 0
@@ -105,9 +111,12 @@ def train(train_phases, model, minibatch, minibatch_eval, model_eval, path_saver
     printf("Full validation (Epoch {:4d}): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.4f}s".format(ep_best, f1mic_val, f1mac_val, f_time), style='red')
     loss_test, f1mic_test, f1mac_test, f_time = evaluate_full_batch(model_eval, minibatch_eval, mode='test')
     printf("Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.4f}s".format(f1mic_test, f1mac_test, f_time), style='red')
+    if inf_params is not None:
+        f1mic_test,f1mac_test,t_forward,t_sampling=evaluate_minibatch(model_eval,minibatch_eval,inf_params,mode='test')
+        printf("Full test stats (minibatched): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\t t_forward = {:.4f}s\tt_sampling = {:.4f}s".format(f1mic_test, f1mac_test, t_forward,t_sampling), style='red')
     printf("Total training time: {:6.2f} sec".format(time_train), style='red')
 
-def get_model(train_phases, train_params, arch_gcn, model, minibatch, minibatch_eval, model_eval):
+def get_model(train_phases, train_params, arch_gcn, model, minibatch, minibatch_eval, model_eval,inf_params):
     text=args_global.data_prefix
     for k,v in arch_gcn.items():
         text+=str(k)+str(v)
@@ -129,6 +138,11 @@ def get_model(train_phases, train_params, arch_gcn, model, minibatch, minibatch_
         printf("Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.4f}s".format(f1mic_test, f1mac_test, f_time), style='red')
     else:
         train(train_phases, model, minibatch, minibatch_eval, model_eval, path_saver=path_saver)
+    if not args_global.cpu_eval:
+        model_eval=model
+        minibatch_eval=minibatch
+    f1mic_test,f1mac_test,t_forward,t_sampling=evaluate_minibatch(model_eval,minibatch_eval,inf_params,mode='test')
+    printf("Full test stats (minibatched): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\t t_forward = {:.4f}s\tt_sampling = {:.4f}s".format(f1mic_test, f1mac_test, t_forward,t_sampling), style='red')
         
 
 # activation=[]
@@ -337,8 +351,8 @@ def prune(model,model_eval,prune_params,minibatch,minibatch_eval):
 if __name__ == '__main__':
     # os.environ['CUDA_LAUNCH_BLOCKING']='1'
     # sys.settrace(gpu_profile)
-    train_params, train_phases, retrain_phases, train_data, arch_gcn, prune_params = parse_n_prepare(args_global)
+    train_params, train_phases, retrain_phases, train_data, arch_gcn, prune_params, inf_params = parse_n_prepare(args_global)
     model, minibatch, minibatch_eval, model_eval = prepare(train_data, train_params, arch_gcn)
-    get_model(train_phases ,train_params, arch_gcn, model, minibatch, minibatch_eval, model_eval)
+    get_model(train_phases ,train_params, arch_gcn, model, minibatch, minibatch_eval, model_eval,inf_params)
     model_pruned,model_pruned_eval=prune(model,model_eval,prune_params,minibatch,minibatch_eval)
-    train(retrain_phases,model_pruned,minibatch,minibatch_eval,model_pruned_eval)
+    train(retrain_phases,model_pruned,minibatch,minibatch_eval,model_pruned_eval,inf_params=inf_params)

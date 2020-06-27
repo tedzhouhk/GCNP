@@ -16,8 +16,13 @@ phase:
     num_root: 2000
     depth: 4
 prune:
-  - budget: 0.25
+  - budget:
+      - 0.25
+      - 0.25
+      - 0.25
+    dynamic: 'static'
     total_step: 1
+    beta_clip: false
     beta_batch: 1024
     beta_lr: 0.05
     beta_epoch: 20
@@ -41,7 +46,13 @@ prune:
     weight_lr: 0.1
     weight_epoch: 20
 retrain_phase:
-  - end: 30
+  - end: 50
     sampler: 'rw'
     num_root: 2000
     depth: 4
+batch_inference:
+  - batch_size: 512
+    neighbors: 32 # number of neighbors except for last layer
+    approx: False
+    approx_thres: 0.2 # percentage of neighbor test nodes
+

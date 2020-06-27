@@ -42,6 +42,7 @@ class Minibatch:
         self.node_val = np.array(role['va'])
         self.node_test = np.array(role['te'])
 
+        self.adj_full_norm_sp=adj_full_norm.tocsr()
         self.adj_full_norm = _coo_scipy2torch(adj_full_norm.tocoo())
         self.adj_val_norm = _coo_scipy2torch(adj_val_norm.tocoo())
         self.adj_train = adj_train

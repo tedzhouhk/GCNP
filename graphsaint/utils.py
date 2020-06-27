@@ -71,6 +71,7 @@ def parse_n_prepare(flags):
     train_phases = train_config['phase']
     retrain_phases=train_config['retrain_phase']
     prune_params=train_config['prune'][0]
+    inf_params=train_config['batch_inference'][0]
     for ph in train_phases:
         assert 'end' in ph
         assert 'sampler' in ph
@@ -78,7 +79,7 @@ def parse_n_prepare(flags):
     temp_data = load_data(flags.data_prefix)
     train_data = process_graph_data(*temp_data)
     print("Done loading training data..")
-    return train_params,train_phases,retrain_phases,train_data,arch_gcn,prune_params
+    return train_params,train_phases,retrain_phases,train_data,arch_gcn,prune_params,inf_params
 
 
 

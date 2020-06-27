@@ -110,6 +110,28 @@ class HighOrderAggregator(nn.Module):
             raise NotImplementedError
         return out
 
+    def sparse_forward(self,feat_self,feat_neigh,adj):
+        assert self.order==1
+        from_self=feat_self
+        from_neigh=self._spmm(adj,feat_neigh)
+        from_self=self._f_feat_trans(from_self,0)
+        from_neigh=self._f_feat_trans(from_neigh,1)
+        if self.aggr=='concat':
+            return torch.cat([from_self,from_neigh],1)
+        else:
+            raise NotImplementedError
+
+    def dense_forward(self,feat_self,feat_neigh):
+        assert self.order==1
+        from_self=feat_self
+        from_neigh=torch.mean(feat_neigh,dim=1)
+        from_self=self._f_feat_trans(from_self,0)
+        from_neigh=self._f_feat_trans(from_neigh,1)
+        if self.aggr=='concat':
+            return torch.cat([from_self,from_neigh],1)
+        else:
+            raise NotImplementedError
+
 class PrunedHighOrderAggregator(nn.Module):
     def __init__(self, dim_in, dim_out, dropout=0., act='relu', \
             order=1, aggr='concat', bias='norm', **kwargs):
@@ -230,6 +252,28 @@ class PrunedHighOrderAggregator(nn.Module):
         else:
             raise NotImplementedError
         return out
+
+    def sparse_forward(self,feat_self,feat_neigh,adj):
+        assert self.order==1
+        from_self=feat_self
+        from_neigh=self._spmm(adj,feat_neigh)
+        from_self=self._f_feat_trans(from_self,0)
+        from_neigh=self._f_feat_trans(from_neigh,1)
+        if self.aggr=='concat':
+            return torch.cat([from_self,from_neigh],1)
+        else:
+            raise NotImplementedError
+
+    def dense_forward(self,feat_self,feat_neigh):
+        assert self.order==1
+        from_self=feat_self
+        from_neigh=torch.mean(feat_neigh,dim=1)
+        from_self=self._f_feat_trans(from_self,0)
+        from_neigh=self._f_feat_trans(from_neigh,1)
+        if self.aggr=='concat':
+            return torch.cat([from_self,from_neigh],1)
+        else:
+            raise NotImplementedError
 
 
 class JumpingKnowledge(nn.Module):
