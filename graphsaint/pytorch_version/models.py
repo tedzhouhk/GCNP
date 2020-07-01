@@ -198,7 +198,8 @@ class GraphSAINT(nn.Module):
                             support=minibatch_sampler.dense_sampling(supports[0])
                             supports.insert(0,support)
                 t_sampling+=time.time()-t_sampling_s
-                t_forward_s=time.time()
+                t_forward_s = time.time()
+                # import pdb; pdb.set_trace()
                 support_idx=0
                 _feat=self.feat_full[supports[support_idx]]
                 for layer in self.aggregators:
