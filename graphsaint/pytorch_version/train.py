@@ -33,13 +33,14 @@ def evaluate_full_batch(model, minibatch, mode='val'):
 
 
 def evaluate_minibatch(model_eval, minibatch_eval, inf_params, mode='test'):
+    time_s=time.time()
     preds, labels, t_forward, t_sampling = model_eval.minibatched_eval(
         minibatch_eval.node_test, minibatch_eval.adj_full_norm_sp, inf_params)
     preds = np.concatenate(preds, axis=0)
     labels = np.concatenate(labels, axis=0)
     f1_scores = calc_f1(labels, preds, model_eval.sigmoid_loss)
-    time_e = time.time()
-    return f1_scores[0], f1_scores[1], t_forward, t_sampling
+    t_total=time.time()-time_s
+    return f1_scores[0], f1_scores[1], t_forward, t_sampling, t_total
 
 
 def prepare(train_data, train_params, arch_gcn):
@@ -157,11 +158,11 @@ def train(train_phases,
         .format(f1mic_test, f1mac_test, f_time),
         style='red')
     if inf_params is not None:
-        f1mic_test, f1mac_test, t_forward, t_sampling = evaluate_minibatch(
+        f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
             model_eval, minibatch_eval, inf_params, mode='test')
         printf(
-            "Full test stats (minibatched): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\t t_forward = {:.4f}s\tt_sampling = {:.4f}s"
-            .format(f1mic_test, f1mac_test, t_forward, t_sampling),
+            "Full test stats (minibatched): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\tf_total = {:.4f}s\t t_forward = {:.4f}s\tt_sampling = {:.4f}s"
+            .format(f1mic_test, f1mac_test,t_total, t_forward, t_sampling),
             style='red')
     printf("Total training time: {:6.2f} sec".format(time_train), style='red')
 
@@ -204,11 +205,11 @@ def get_model(train_phases, train_params, arch_gcn, model, minibatch,
     if not args_global.cpu_eval:
         model_eval = model
         minibatch_eval = minibatch
-    f1mic_test, f1mac_test, t_forward, t_sampling = evaluate_minibatch(
-        model_eval, minibatch_eval, inf_params, mode='test')
+    f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
+            model_eval, minibatch_eval, inf_params, mode='test')
     printf(
-        "Full test stats (minibatched): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\t t_forward = {:.4f}s\tt_sampling = {:.4f}s"
-        .format(f1mic_test, f1mac_test, t_forward, t_sampling),
+        "Full test stats (minibatched): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\tf_total = {:.4f}s\t t_forward = {:.4f}s\tt_sampling = {:.4f}s"
+        .format(f1mic_test, f1mac_test,t_total, t_forward, t_sampling),
         style='red')
 
 
