@@ -6,7 +6,7 @@ from graphsaint.metric import *
 from graphsaint.pytorch_version.utils import *
 from graphsaint.pytorch_version.prune import Lasso
 from graphsaint.pytorch_version.plot import *
-from graphsaint.pytorch_version.gpu_profile import gpu_profile
+# from graphsaint.pytorch_version.gpu_profile import gpu_profile
 import hashlib
 import torch
 import time

@@ -30,19 +30,19 @@ cdef extern from "sampler_core.h":
         vector[int] adj_indptr;
         vector[int] adj_indices;
         int num_neighbor;
-        SamplerCore(vector[int]&, vector[int]&, int)
+        SamplerCore(vector[int]&, vector[int]&, int, int)
         vector[int] dense_sampling(vector[int]&)
         NodesAdj sparse_sampling(vector[int]&)
 
 cdef class MinibatchSampler:
     cdef SamplerCore* cobj
 
-    def __init__(self,np.ndarray[int,ndim=1,mode='c'] adj_indptr,np.ndarray[int,ndim=1,mode='c'] adj_indices,int num_neighbor):
+    def __init__(self,np.ndarray[int,ndim=1,mode='c'] adj_indptr,np.ndarray[int,ndim=1,mode='c'] adj_indices,int num_neighbor,int num_thread=40):
         cdef vector[int] adj_indptr_vec
         cdef vector[int] adj_indices_vec
         npy2vec_int(adj_indptr,adj_indptr_vec)
         npy2vec_int(adj_indices,adj_indices_vec)
-        self.cobj=new SamplerCore(adj_indptr_vec,adj_indices_vec,num_neighbor)
+        self.cobj=new SamplerCore(adj_indptr_vec,adj_indices_vec,num_neighbor,num_thread)
 
     def dense_sampling(self,np.ndarray[int,ndim=1,mode='c'] nodes):
         cdef vector[int] nodes_vec

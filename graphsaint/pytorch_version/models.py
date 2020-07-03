@@ -175,7 +175,7 @@ class GraphSAINT(nn.Module):
         self.eval()
         t_forward=0
         t_sampling=0
-        minibatch_sampler=MinibatchSampler(adj.indptr,adj.indices,inf_params['neighbors'])
+        minibatch_sampler=MinibatchSampler(adj.indptr,adj.indices,inf_params['neighbors'],num_thread=40)
         with torch.no_grad():
             minibatches=np.array_split(node_test.astype(np.int32),int(node_test.shape[0]/inf_params['batch_size']))
             preds=list()
