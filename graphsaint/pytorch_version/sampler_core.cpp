@@ -26,8 +26,16 @@ std::vector<int> SamplerCore::dense_sampling(std::vector<int> &nodes)
             for (int j = 0; j < num_neighbor; j++)
             {
                 int pos = nodes.size() + i * num_neighbor + j;
-                int choose = rand_r(&myseed) % (adj_indptr[node + 1] - adj_indptr[node]);
-                choose = adj_indices[adj_indptr[node] + choose];
+                int choose;
+                if (adj_indptr[node + 1] - adj_indptr[node] > 0)
+                {
+                    choose = rand_r(&myseed) % (adj_indptr[node + 1] - adj_indptr[node]);
+                    choose = adj_indices[adj_indptr[node] + choose];
+                }
+                else
+                {
+                    choose = node;
+                }
                 sampled_nodes[pos] = choose;
             }
         }

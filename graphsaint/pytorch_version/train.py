@@ -158,8 +158,17 @@ def train(train_phases,
         .format(f1mic_test, f1mac_test, f_time),
         style='red')
     if inf_params is not None:
-        f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
-            model_eval, minibatch_eval, inf_params, mode='test')
+        if args_global.profile_minibatch:
+            if 'prof' in locals() or 'prof' in globals():
+                del prof
+            with torch.autograd.profiler.profile(use_cuda=model_eval.use_cuda) as prof:
+                f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
+                    model_eval, minibatch_eval, inf_params, mode='test')
+            sort_key="cuda_time_total" if model_eval.use_cuda else "cpu_time_total"
+            print(prof.key_averages().table(sort_by=sort_key))
+        else:
+            f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
+                model_eval, minibatch_eval, inf_params, mode='test')
         printf(
             "Full test stats (minibatched): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\tf_total = {:.4f}s\t t_forward = {:.4f}s\tt_sampling = {:.4f}s"
             .format(f1mic_test, f1mac_test,t_total, t_forward, t_sampling),
@@ -205,7 +214,16 @@ def get_model(train_phases, train_params, arch_gcn, model, minibatch,
     if not args_global.cpu_eval:
         model_eval = model
         minibatch_eval = minibatch
-    f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
+    if args_global.profile_minibatch:
+        if 'prof' in locals() or 'prof' in globals():
+            del prof
+        with torch.autograd.profiler.profile(use_cuda=model_eval.use_cuda) as prof:
+            f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
+                model_eval, minibatch_eval, inf_params, mode='test')
+        sort_key="cuda_time_total" if model_eval.use_cuda else "cpu_time_total"
+        print(prof.key_averages().table(sort_by=sort_key))
+    else:
+        f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
             model_eval, minibatch_eval, inf_params, mode='test')
     printf(
         "Full test stats (minibatched): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\tf_total = {:.4f}s\t t_forward = {:.4f}s\tt_sampling = {:.4f}s"
@@ -483,7 +501,7 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
     loss_test, f1mic_test, f1mac_test, f_time = evaluate_full_batch(
         model_pruned_eval, minibatch_eval, mode='test')
     printf(
-        "Pruned new model full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.2f}s"
+        "Pruned new model full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.4f}s"
         .format(f1mic_test, f1mac_test, f_time),
         style='red')
     return model_pruned, model_pruned_eval

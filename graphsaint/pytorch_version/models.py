@@ -7,6 +7,7 @@ import graphsaint.pytorch_version.layers as layers
 from tqdm import tqdm
 from graphsaint.pytorch_version.minibatch_sampler import *
 from graphsaint.pytorch_version.minibatch import _coo_scipy2torch
+from multiprocessing import Process, Pipe
 
 class GraphSAINT(nn.Module):
     def __init__(self, num_classes, arch_gcn, train_params, feat_full, label_full, cpu_eval=False):
@@ -170,58 +171,63 @@ class GraphSAINT(nn.Module):
                 return _feat
         return
 
-    def minibatched_eval(self,node_test,adj,inf_params):
+    def minibatched_eval(self, node_test, adj, inf_params):
+        def sampling(nodes,minibatch_sampler):
+            supports=[nodes]
+            last_layer = True
+            for layer in reversed(self.aggregators):
+                if layer.order>0:
+                    assert layer.order==1
+                    if last_layer:
+                        support,subg_adj=minibatch_sampler.sparse_sampling(supports[0])
+                        subg_adj=_coo_scipy2torch(subg_adj)
+                        if self.use_cuda:
+                            subg_adj=subg_adj.cuda()
+                        supports.insert(0,support)
+                        last_layer=False
+                    else:
+                        support=minibatch_sampler.dense_sampling(supports[0])
+                        supports.insert(0, support)
+            return supports,subg_adj
+        def forward(supports,subg_adj):
+            support_idx=0
+            _feat=self.feat_full[supports[support_idx]]
+            for layer in self.aggregators:
+                if support_idx==len(supports)-2:
+                    last_layer=True
+                else:
+                    last_layer=False
+                if layer.order>0:
+                    if last_layer:
+                        _feat_self=_feat[:supports[support_idx+1].shape[0]]
+                        _feat_neigh=_feat
+                        _feat=layer.sparse_forward(_feat_self,_feat_neigh,subg_adj)
+                    else:
+                        _feat_self=_feat[:supports[support_idx+1].shape[0]]
+                        _feat_neigh=_feat[supports[support_idx+1].shape[0]:].view(supports[support_idx+1].shape[0],inf_params['neighbors'],_feat.shape[1])
+                        _feat=layer.dense_forward(_feat_self,_feat_neigh)
+                    support_idx+=1
+                else:
+                    _feat=layer.inplace_forward(_feat)
+            F.normalize(_feat,p=2,dim=1,out=_feat)
+            pred=self.classifier.inplace_forward(_feat)
+            label=self.label_full[nodes]
+            return pred,label
         print('start minibatch inference ...')
         self.eval()
         t_forward=0
         t_sampling=0
-        minibatch_sampler=MinibatchSampler(adj.indptr,adj.indices,inf_params['neighbors'],num_thread=40)
+        minibatch_sampler=MinibatchSampler(adj.indptr, adj.indices, inf_params['neighbors'], num_thread=40)
         with torch.no_grad():
             minibatches=np.array_split(node_test.astype(np.int32),int(node_test.shape[0]/inf_params['batch_size']))
             preds=list()
             labels=list()
             for nodes in tqdm(minibatches):
-                t_sampling_s=time.time()
-                supports=[nodes]
-                last_layer=True
-                for layer in reversed(self.aggregators):
-                    if layer.order>0:
-                        assert layer.order==1
-                        if last_layer:
-                            support,subg_adj=minibatch_sampler.sparse_sampling(supports[0])
-                            subg_adj=_coo_scipy2torch(subg_adj)
-                            if self.use_cuda:
-                                subg_adj=subg_adj.cuda()
-                            supports.insert(0,support)
-                            last_layer=False
-                        else:
-                            support=minibatch_sampler.dense_sampling(supports[0])
-                            supports.insert(0,support)
+                t_sampling_s = time.time()
+                supports,subg_adj=sampling(nodes,minibatch_sampler)
                 t_sampling+=time.time()-t_sampling_s
                 t_forward_s = time.time()
-                # import pdb; pdb.set_trace()
-                support_idx=0
-                _feat=self.feat_full[supports[support_idx]]
-                for layer in self.aggregators:
-                    if support_idx==len(supports)-2:
-                        last_layer=True
-                    else:
-                        last_layer=False
-                    if layer.order>0:
-                        if last_layer:
-                            _feat_self=_feat[:supports[support_idx+1].shape[0]]
-                            _feat_neigh=_feat
-                            _feat=layer.sparse_forward(_feat_self,_feat_neigh,subg_adj)
-                        else:
-                            _feat_self=_feat[:supports[support_idx+1].shape[0]]
-                            _feat_neigh=_feat[supports[support_idx+1].shape[0]:].view(supports[support_idx+1].shape[0],inf_params['neighbors'],_feat.shape[1])
-                            _feat=layer.dense_forward(_feat_self,_feat_neigh)
-                        support_idx+=1
-                    else:
-                        _feat=layer.inplace_forward(_feat)
-                F.normalize(_feat,p=2,dim=1,out=_feat)
-                pred=self.classifier.inplace_forward(_feat)
-                label=self.label_full[nodes]
+                pred,label=forward(supports,subg_adj)
                 t_forward+=time.time()-t_forward_s
                 preds.append(pred.cpu().numpy())
                 labels.append(label.cpu().numpy())
