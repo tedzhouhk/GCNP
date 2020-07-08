@@ -235,7 +235,7 @@ class GraphSAINT(nn.Module):
 
 
 class PrunedGraphSAINT(nn.Module):
-    def __init__(self, num_classes, arch_gcn, train_params, feat_full, label_full, dims_in, dims_out, masks, cpu_eval=False):
+    def __init__(self, num_classes, arch_gcn, train_params, feat_full, label_full, dims_in, dims_out, masks, cpu_eval=False, first_layer_pruned=True):
         super(PrunedGraphSAINT,self).__init__()
         self.use_cuda = (args_global.gpu >= 0)
         if cpu_eval:
@@ -252,7 +252,8 @@ class PrunedGraphSAINT(nn.Module):
         self.label_full = label_full
         self.dims_in=dims_in
         self.dims_out=dims_out
-        self.masks=masks
+        self.masks = masks
+        self.first_layer_pruned = first_layer_pruned
         if self.use_cuda:
             self.feat_full = self.feat_full.cuda()
             self.label_full = self.label_full.cuda()
@@ -294,7 +295,7 @@ class PrunedGraphSAINT(nn.Module):
         feat_subg = self.feat_full[node_subgraph]
         label_subg = self.label_full[node_subgraph]
         label_subg_converted = label_subg if self.sigmoid_loss else self.label_full_cat[node_subgraph]
-        _,emb_subg,_,_ = self.conv_layers((adj_subgraph, feat_subg, True, self.masks))
+        _,emb_subg,_,_ = self.conv_layers((adj_subgraph, feat_subg, self.first_layer_pruned, self.masks))
         emb_subg_norm = F.normalize(emb_subg, p=2, dim=1)
         pred_subg = self.classifier((None, emb_subg_norm, False, self.masks))[1]
         return pred_subg, label_subg, label_subg_converted
@@ -353,11 +354,11 @@ class PrunedGraphSAINT(nn.Module):
             # loss = self._loss(preds,labels_converted,norm_loss_subgraph)
             assert node_subgraph.shape[0]==self.feat_full.shape[0]
             _feat=self.feat_full
-            first_layer=True
+            first_layer=self.first_layer_pruned
             # import pdb; pdb.set_trace()
             for layer in self.aggregators:
                 feat=layer.inplace_forward(_feat,adj_subgraph,first_layer,self.masks)
-                first_layer=False
+                first_layer = False
                 del _feat
                 _feat=feat
             F.normalize(_feat,p=2,dim=1,out=_feat)
@@ -374,8 +375,12 @@ class PrunedGraphSAINT(nn.Module):
         t_forward=0
         t_sampling=0
         with torch.no_grad():
-            _feat_self_full=self.feat_full[:,self.masks[0]]
-            _feat_neigh_full=self.feat_full[:,self.masks[1]]
+            if self.first_layer_pruned:
+                _feat_self_full = self.feat_full[:, self.masks[0]]
+                _feat_neigh_full = self.feat_full[:, self.masks[1]]
+            else:
+                _feat_self_full = self.feat_full
+                _feat_neigh_full = self.feat_full
             minibatches=np.array_split(node_test.astype(np.int32),int(node_test.shape[0]/inf_params['batch_size']))
             preds=list()
             labels=list()

@@ -19,7 +19,7 @@ def _coo_scipy2torch(adj):
     indices = np.vstack((adj.row, adj.col))
     i = torch.LongTensor(indices)
     v = torch.FloatTensor(values)
-    return torch.sparse.FloatTensor(i, v, torch.Size(adj.shape))
+    return torch.sparse.FloatTensor(i, v, torch.Size(adj.shape)).coalesce()
 
 
 class Minibatch:
