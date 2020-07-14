@@ -1,20 +1,20 @@
 network:
-  - dim: 128
-    loss: 'softmax'
-    arch: '1-1' 
+  - dim: 512
     aggr: 'concat'
+    loss: 'sigmoid'
+    arch: '1-1'
     act: 'relu'
     bias: 'norm'
 params:
   - lr: 0.01
     dropout: 0.1
-    weight_decay: 0.0   
+    weight_decay: 0.0
     sample_coverage: 50
 phase:
-  - end: 30
+  - end: 100
     sampler: 'rw'
-    num_root: 2000
-    depth: 4
+    num_root: 1250
+    depth: 2
 prune:
   - budget:
       - 0.5
@@ -31,9 +31,9 @@ prune:
       - 0 # gcn-layer-2
       - 0 # gcn-layer-1
     beta_lmbd_1_step:
+      - 0.00005
       - 0.0001
-      - 0.001
-      - 0.002
+      - 0.0004
     beta_lmbd_2:
       - 0
       - 0
@@ -46,11 +46,11 @@ prune:
     weight_lr: 0.1
     weight_epoch: 20
 retrain_phase:
-  - end: 50
+  - end: 100
     sampler: 'rw'
-    num_root: 2000
-    depth: 4
+    num_root: 1250
+    depth: 2
 batch_inference:
   - batch_size: 512
-    neighbors: 32 # maximum number of neighbors
+    neighbors: 32 # number of neighbors except for last layer
     approx: True

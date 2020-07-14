@@ -1,24 +1,24 @@
 network:
-  - dim: 128
-    loss: 'softmax'
-    arch: '1-1' 
+  - dim: 512
     aggr: 'concat'
+    loss: 'softmax'
+    arch: '1-1'
     act: 'relu'
     bias: 'norm'
 params:
   - lr: 0.01
-    dropout: 0.1
-    weight_decay: 0.0   
-    sample_coverage: 50
+    dropout: 0.2
+    weight_decay: 0.0
+    sample_coverage: 1000
 phase:
-  - end: 30
+  - end: 100
     sampler: 'rw'
-    num_root: 2000
+    num_root: 5000
     depth: 4
 prune:
   - budget:
-      - 0.5
-      - 0.5
+      - 0.25
+      - 0.25
       - 1
     dynamic: 'static'
     total_step: 1
@@ -46,11 +46,11 @@ prune:
     weight_lr: 0.1
     weight_epoch: 20
 retrain_phase:
-  - end: 50
+  - end: 100
     sampler: 'rw'
-    num_root: 2000
+    num_root: 5000
     depth: 4
 batch_inference:
   - batch_size: 512
-    neighbors: 32 # maximum number of neighbors
+    neighbors: 32 # number of neighbors except for last layer
     approx: True

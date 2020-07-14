@@ -11,7 +11,7 @@ import numpy as np
 import time
 
 
-def _coo_scipy2torch(adj):
+def _coo_scipy2torch(adj, coalesce=True):
     """
     convert a scipy sparse COO matrix to torch
     """
@@ -19,7 +19,10 @@ def _coo_scipy2torch(adj):
     indices = np.vstack((adj.row, adj.col))
     i = torch.LongTensor(indices)
     v = torch.FloatTensor(values)
-    return torch.sparse.FloatTensor(i, v, torch.Size(adj.shape)).coalesce()
+    ans = torch.sparse.FloatTensor(i, v, torch.Size(adj.shape))
+    if coalesce:
+        ans = ans.coalesce()
+    return ans
 
 
 class Minibatch:
@@ -44,6 +47,7 @@ class Minibatch:
         self.node_train = np.array(role['tr'])
         self.node_val = np.array(role['va'])
         self.node_test = np.array(role['te'])
+        self.node_trainval = np.concatenate((self.node_train,self.node_val),axis=None)
 
         self.adj_full_norm_sp = adj_full_norm.tocsr()
         self.adj_full_norm = _coo_scipy2torch(adj_full_norm.tocoo())

@@ -268,3 +268,16 @@ class PrunedHighOrderAggregator(nn.Module):
             return torch.cat([from_self,from_neigh],1)
         else:
             raise NotImplementedError
+
+    def mixed_forward(self, feat_self, feat_neigh_sparse, feat_neigh_dense, adj):
+        assert self.order == 1
+        feat_neigh_sparse = self._spmm(adj, feat_neigh_sparse)
+        feat_neigh_dense = torch.mean(feat_neigh_dense, dim=1)
+        from_self = self._f_feat_trans(feat_self, 0)
+        from_neigh = torch.cat([feat_neigh_sparse, feat_neigh_dense], 0)
+        from_neigh = self._f_feat_trans(from_neigh, 1)
+        if self.aggr=='concat':
+            return torch.cat([from_self,from_neigh],1)
+        else:
+            raise NotImplementedError
+        

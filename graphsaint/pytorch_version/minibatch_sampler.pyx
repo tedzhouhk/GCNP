@@ -7,6 +7,7 @@ cimport cython
 import scipy.sparse as sp
 from libc.stdlib cimport malloc, free
 from libcpp.vector cimport vector
+from libcpp.unordered_set cimport unordered_set
 
 cdef inline void npy2vec_int(np.ndarray[int,ndim=1,mode='c'] nda, vector[int]& vec):
     cdef int size = nda.size
@@ -33,6 +34,27 @@ cdef extern from "sampler_core.h":
         SamplerCore(vector[int]&, vector[int]&, int, int)
         vector[int] dense_sampling(vector[int]&)
         NodesAdj sparse_sampling(vector[int]&)
+
+cdef extern from "sampler_core.h":
+    ctypedef struct ApproxNodesAdj:
+        vector[int] known_neighbors
+        vector[int] unknown_neighbors
+        vector[int] adj_row
+        vector[int] adj_col
+        vector[float] adj_data
+
+cdef extern from "sampler_core.h":
+    cppclass ApproxSamplerCore:
+        vector[int] adj_indptr
+        vector[int] adj_indices
+        unordered_set[int] nodes_known
+        int num_neighbor
+        int num_thread
+        ApproxSamplerCore(vector[int]&, vector[int]&, vector[int]&, int, int)
+        void update_known_idx(vector[int]&)
+        vector[int] dense_sampling(vector[int]&)
+        ApproxNodesAdj approx_sparse_sampling(vector[int]&)
+
 
 cdef class MinibatchSampler:
     cdef SamplerCore* cobj
@@ -70,6 +92,56 @@ cdef class MinibatchSampler:
         sampled_adj_data=np.asarray(arr_float_helper).copy()
         sampled_adj=sp.coo_matrix((sampled_adj_data,(sampled_adj_row,sampled_adj_col)),shape=(nodes_vec.size(),sampled_nodes_vec.size()))
         return sampled_nodes,sampled_adj
+
+cdef class ApproxMinibatchSampler:
+    cdef ApproxSamplerCore* cobj
+
+    def __init__(self,np.ndarray[int,ndim=1,mode='c'] adj_indptr,np.ndarray[int,ndim=1,mode='c'] adj_indices,np.ndarray[int,ndim=1,mode='c'] known_idx,int num_neighbor,int num_thread=40):
+        cdef vector[int] adj_indptr_vec
+        cdef vector[int] adj_indices_vec
+        cdef vector[int] known_idx_vec
+        npy2vec_int(adj_indptr,adj_indptr_vec)
+        npy2vec_int(adj_indices,adj_indices_vec)
+        npy2vec_int(known_idx,known_idx_vec)
+        self.cobj=new ApproxSamplerCore(adj_indptr_vec,adj_indices_vec,known_idx_vec,num_neighbor,num_thread)
+
+    def update_known_idx(self,np.ndarray[int,ndim=1,mode='c'] nodes):
+        cdef vector[int] nodes_vec
+        npy2vec_int(nodes,nodes_vec)
+        self.cobj.update_known_idx(nodes_vec)
+
+    def dense_sampling(self,np.ndarray[int,ndim=1,mode='c'] nodes):
+        cdef vector[int] nodes_vec
+        npy2vec_int(nodes,nodes_vec)
+        sampled_nodes_vec=self.cobj.dense_sampling(nodes_vec)
+        arr_int_helper=<int [:sampled_nodes_vec.size()]>sampled_nodes_vec.data()
+        sampled_nodes=np.asarray(arr_int_helper.copy())
+        return sampled_nodes
+    
+    def approx_sparse_sampling(self,np.ndarray[int,ndim=1,mode='c'] nodes):
+        cdef vector[int] nodes_vec
+        npy2vec_int(nodes,nodes_vec)
+        ans_struct=self.cobj.approx_sparse_sampling(nodes_vec)
+        sampled_known_nodes_vec=ans_struct.known_neighbors;
+        sampled_unknown_nodes_vec=ans_struct.unknown_neighbors;
+        sampled_adj_row_vec=ans_struct.adj_row;
+        sampled_adj_col_vec=ans_struct.adj_col;
+        sampled_adj_data_vec=ans_struct.adj_data;
+        arr_int_helper=<int [:sampled_known_nodes_vec.size()]>sampled_known_nodes_vec.data()
+        sampled_known_nodes=np.asarray(arr_int_helper).copy()
+        arr_int_helper=<int [:sampled_unknown_nodes_vec.size()]>sampled_unknown_nodes_vec.data()
+        sampled_unknown_nodes=np.asarray(arr_int_helper).copy()
+        arr_int_helper=<int [:sampled_adj_row_vec.size()]>sampled_adj_row_vec.data()
+        sampled_adj_row=np.asarray(arr_int_helper).copy()
+        arr_int_helper=<int [:sampled_adj_col_vec.size()]>sampled_adj_col_vec.data()
+        sampled_adj_col=np.asarray(arr_int_helper).copy()
+        arr_float_helper=<float [:sampled_adj_data_vec.size()]>sampled_adj_data_vec.data()
+        sampled_adj_data=np.asarray(arr_float_helper).copy()
+        # print(sampled_adj_row)
+        # print(sampled_adj_col)
+        # print(nodes_vec.size(),sampled_known_nodes_vec.size()+sampled_unknown_nodes_vec.size())
+        sampled_adj=sp.coo_matrix((sampled_adj_data,(sampled_adj_row,sampled_adj_col)),shape=(nodes_vec.size(),sampled_known_nodes_vec.size()+sampled_unknown_nodes_vec.size()))
+        return sampled_unknown_nodes,sampled_known_nodes,sampled_adj
 
 
 '''

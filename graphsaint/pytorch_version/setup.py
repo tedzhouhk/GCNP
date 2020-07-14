@@ -7,7 +7,7 @@ ext_modules = [
         "graphsaint.pytorch_version.minibatch_sampler",
         ["graphsaint/pytorch_version/minibatch_sampler.pyx", "graphsaint/pytorch_version/sampler_core.cpp"],
         language="c++",
-        extra_compile_args=['-fopenmp','-O3'],
+        extra_compile_args=['-fopenmp','-O3', '-std=c++11'],
         extra_link_args=['-fopenmp'],
     )
 ]

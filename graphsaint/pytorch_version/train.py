@@ -34,13 +34,24 @@ def evaluate_full_batch(model, minibatch, mode='val'):
 
 
 def evaluate_minibatch(model_eval, minibatch_eval, inf_params, mode='test'):
-    time_s=time.time()
+    time_s = time.time()
     preds, labels, t_forward, t_sampling = model_eval.minibatched_eval(
         minibatch_eval.node_test, minibatch_eval.adj_full_norm_sp, inf_params)
     preds = np.concatenate(preds, axis=0)
     labels = np.concatenate(labels, axis=0)
     f1_scores = calc_f1(labels, preds, model_eval.sigmoid_loss)
-    t_total=time.time()-time_s
+    t_total = time.time() - time_s
+    return f1_scores[0], f1_scores[1], t_forward, t_sampling, t_total
+
+def approx_evaluate_minibatch(model_eval, minibatch_eval, inf_params, mode='test'):
+    historical_feat = model_eval.get_input_activation(*minibatch.one_batch(mode='val'), 1)
+    time_s = time.time()
+    preds, labels, t_forward, t_sampling = model_eval.approx_minibatched_eval(
+        minibatch_eval.node_test, minibatch_eval.adj_full_norm_sp, inf_params, historical_feat,minibatch_eval.node_trainval.astype(np.int32))
+    preds = np.concatenate(preds, axis=0)
+    labels = np.concatenate(labels, axis=0)
+    f1_scores = calc_f1(labels, preds, model_eval.sigmoid_loss)
+    t_total = time.time() - time_s
     return f1_scores[0], f1_scores[1], t_forward, t_sampling, t_total
 
 
@@ -155,10 +166,11 @@ def train(train_phases,
     if args_global.profile_fullbatch:
         if 'prof' in locals() or 'prof' in globals():
             del prof
-        with torch.autograd.profiler.profile(use_cuda=model_eval.use_cuda) as prof:
+        with torch.autograd.profiler.profile(
+                use_cuda=model_eval.use_cuda) as prof:
             loss_test, f1mic_test, f1mac_test, f_time = evaluate_full_batch(
                 model_eval, minibatch_eval, mode='test')
-        sort_key="cuda_time_total" if model_eval.use_cuda else "cpu_time_total"
+        sort_key = "cuda_time_total" if model_eval.use_cuda else "cpu_time_total"
         print(prof.key_averages().table(sort_by=sort_key, row_limit=10))
     else:
         loss_test, f1mic_test, f1mac_test, f_time = evaluate_full_batch(
@@ -171,18 +183,39 @@ def train(train_phases,
         if args_global.profile_minibatch:
             if 'prof' in locals() or 'prof' in globals():
                 del prof
-            with torch.autograd.profiler.profile(use_cuda=model_eval.use_cuda) as prof:
+            with torch.autograd.profiler.profile(
+                    use_cuda=model_eval.use_cuda) as prof:
                 f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
                     model_eval, minibatch_eval, inf_params, mode='test')
-            sort_key="cuda_time_total" if model_eval.use_cuda else "cpu_time_total"
+            sort_key = "cuda_time_total" if model_eval.use_cuda else "cpu_time_total"
             print(prof.key_averages().table(sort_by=sort_key, row_limit=10))
         else:
             f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
                 model_eval, minibatch_eval, inf_params, mode='test')
         printf(
             "Full test stats (minibatched): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\tf_total = {:.4f}s\t t_forward = {:.4f}s\tt_sampling = {:.4f}s"
-            .format(f1mic_test, f1mac_test, t_forward + t_sampling , t_forward, t_sampling),
+            .format(f1mic_test, f1mac_test, t_forward + t_sampling, t_forward,
+                    t_sampling),
             style='red')
+        if type(model_eval) is PrunedGraphSAINT and inf_params['approx']:
+            if args_global.profile_approxminibatch:
+                if 'prof' in locals() or 'prof' in globals():
+                    del prof
+                with torch.autograd.profiler.profile(
+                        use_cuda=model_eval.use_cuda) as prof:
+                    f1mic_test, f1mac_test, t_forward, t_sampling, t_total = approx_evaluate_minibatch(
+                        model_eval, minibatch_eval, inf_params, mode='test')
+                sort_key = "cuda_time_total" if model_eval.use_cuda else "cpu_time_total"
+                print(prof.key_averages().table(sort_by=sort_key,
+                                                row_limit=10))
+            else:
+                f1mic_test, f1mac_test, t_forward, t_sampling, t_total = approx_evaluate_minibatch(
+                    model_eval, minibatch_eval, inf_params, mode='test')
+            printf(
+                "Full test stats (approximated, minibatched): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\tf_total = {:.4f}s\t t_forward = {:.4f}s\tt_sampling = {:.4f}s"
+                .format(f1mic_test, f1mac_test, t_forward + t_sampling, t_forward,
+                        t_sampling),
+                style='red')        
     printf("Total training time: {:6.2f} sec".format(time_train), style='red')
 
 
@@ -211,10 +244,11 @@ def get_model(train_phases, train_params, arch_gcn, model, minibatch,
         if args_global.profile_fullbatch:
             if 'prof' in locals() or 'prof' in globals():
                 del prof
-            with torch.autograd.profiler.profile(use_cuda=model_eval.use_cuda) as prof:
+            with torch.autograd.profiler.profile(
+                    use_cuda=model_eval.use_cuda) as prof:
                 loss_test, f1mic_test, f1mac_test, f_time = evaluate_full_batch(
                     model_eval, minibatch_eval, mode='test')
-            sort_key="cuda_time_total" if model_eval.use_cuda else "cpu_time_total"
+            sort_key = "cuda_time_total" if model_eval.use_cuda else "cpu_time_total"
             print(prof.key_averages().table(sort_by=sort_key, row_limit=10))
         else:
             loss_test, f1mic_test, f1mac_test, f_time = evaluate_full_batch(
@@ -236,17 +270,19 @@ def get_model(train_phases, train_params, arch_gcn, model, minibatch,
     if args_global.profile_minibatch:
         if 'prof' in locals() or 'prof' in globals():
             del prof
-        with torch.autograd.profiler.profile(use_cuda=model_eval.use_cuda) as prof:
+        with torch.autograd.profiler.profile(
+                use_cuda=model_eval.use_cuda) as prof:
             f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
                 model_eval, minibatch_eval, inf_params, mode='test')
-        sort_key="cuda_time_total" if model_eval.use_cuda else "cpu_time_total"
+        sort_key = "cuda_time_total" if model_eval.use_cuda else "cpu_time_total"
         print(prof.key_averages().table(sort_by=sort_key, row_limit=10))
     else:
         f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
             model_eval, minibatch_eval, inf_params, mode='test')
     printf(
         "Full test stats (minibatched): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\tf_total = {:.4f}s\t t_forward = {:.4f}s\tt_sampling = {:.4f}s"
-        .format(f1mic_test, f1mac_test, t_forward + t_sampling , t_forward, t_sampling),
+        .format(f1mic_test, f1mac_test, t_forward + t_sampling, t_forward,
+                t_sampling),
         style='red')
 
 
@@ -275,7 +311,7 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
         name = names[i]
         layer_step = layer_steps[i]
         if i == len(layers) - 1:
-            if prune_params['budget'][i] == 0:
+            if prune_params['budget'][i] == 1:
                 first_layer_pruned = False
             # for first GCN layer, prune each order seperately
             optimize_phase = list(range(layer.order + 1))
@@ -468,8 +504,8 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
             for o in range(model_eval.aggregators[i].order + 1):
                 mask_in.append(
                     lassos[lasso_idx -
-                        1].mask_out[o * feat_length_per_order:(o + 1) *
-                                    feat_length_per_order])
+                           1].mask_out[o * feat_length_per_order:(o + 1) *
+                                       feat_length_per_order])
                 dim_out.append(torch.where(mask_in[-1] == True)[0].shape[0])
             masks_in.insert(0, mask_in)
             dims_out.insert(0, dim_out)
@@ -488,9 +524,15 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
     printf("Pruned model dims:", style='red')
     printf("  in: {}".format(str(dims_in)), style='red')
     printf("  out: {}".format(str(dims_out)), style='red')
-    model_pruned = PrunedGraphSAINT(
-        model_eval.num_classes, model_eval.arch_gcn, model_eval.train_params,
-        model_eval.feat_full, model_eval.label_full, dims_in, dims_out, mask_0, first_layer_pruned=first_layer_pruned)
+    model_pruned = PrunedGraphSAINT(model_eval.num_classes,
+                                    model_eval.arch_gcn,
+                                    model_eval.train_params,
+                                    model_eval.feat_full,
+                                    model_eval.label_full,
+                                    dims_in,
+                                    dims_out,
+                                    mask_0,
+                                    first_layer_pruned=first_layer_pruned)
     model_pruned_eval = PrunedGraphSAINT(model_eval.num_classes,
                                          model_eval.arch_gcn,
                                          model_eval.train_params,
