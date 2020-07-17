@@ -116,10 +116,13 @@ class HighOrderAggregator(nn.Module):
         else:
             raise NotImplementedError
 
-    def dense_forward(self,feat_self,feat_neigh):
+    def dense_forward(self,feat_self,feat_neigh,masked=False,deg_inv=None):
         assert self.order==1
-        from_self=feat_self
-        from_neigh=torch.mean(feat_neigh,dim=1)
+        from_self = feat_self
+        if not masked:
+            from_neigh = torch.mean(feat_neigh, dim=1)
+        else:
+            from_neigh = torch.sum(feat_neigh, dim=1) * deg_inv[:, None]
         from_self=self._f_feat_trans(from_self,0)
         from_neigh=self._f_feat_trans(from_neigh,1)
         if self.aggr=='concat':

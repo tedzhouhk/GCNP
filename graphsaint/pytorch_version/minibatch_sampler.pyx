@@ -8,6 +8,7 @@ import scipy.sparse as sp
 from libc.stdlib cimport malloc, free
 from libcpp.vector cimport vector
 from libcpp.unordered_set cimport unordered_set
+from libcpp cimport bool
 
 cdef inline void npy2vec_int(np.ndarray[int,ndim=1,mode='c'] nda, vector[int]& vec):
     cdef int size = nda.size
@@ -27,6 +28,12 @@ cdef extern from "sampler_core.h":
         vector[float] adj_data
 
 cdef extern from "sampler_core.h":
+    ctypedef struct MaskedNodes:
+        vector[int] nodes
+        vector[int] masks
+        vector[float] deg_inv
+
+cdef extern from "sampler_core.h":
     cppclass SamplerCore:
         vector[int] adj_indptr;
         vector[int] adj_indices;
@@ -34,6 +41,7 @@ cdef extern from "sampler_core.h":
         SamplerCore(vector[int]&, vector[int]&, int, int)
         vector[int] dense_sampling(vector[int]&)
         NodesAdj sparse_sampling(vector[int]&)
+        MaskedNodes masked_dense_sampling(vector[int]&)
 
 cdef extern from "sampler_core.h":
     ctypedef struct ApproxNodesAdj:
@@ -73,6 +81,21 @@ cdef class MinibatchSampler:
         arr_int_helper=<int [:sampled_nodes_vec.size()]>sampled_nodes_vec.data()
         sampled_nodes=np.asarray(arr_int_helper.copy())
         return sampled_nodes
+
+    def masked_dense_sampling(self,np.ndarray[int,ndim=1,mode='c'] nodes):
+        cdef vector[int] nodes_vec
+        npy2vec_int(nodes,nodes_vec)
+        ans_struct=self.cobj.masked_dense_sampling(nodes_vec)
+        sampled_nodes_vec=ans_struct.nodes
+        mask_vec=ans_struct.masks
+        deg_inv_vec=ans_struct.deg_inv
+        arr_int_helper=<int [:sampled_nodes_vec.size()]>sampled_nodes_vec.data()
+        sampled_nodes=np.asarray(arr_int_helper.copy())
+        arr_int_helper=<int [:mask_vec.size()]>mask_vec.data()
+        mask=np.asarray(arr_int_helper.copy()).astype(np.bool)
+        arr_float_helper=<float [:deg_inv_vec.size()]>deg_inv_vec.data()
+        deg_inv=np.asarray(arr_float_helper.copy())
+        return sampled_nodes,mask,deg_inv
     
     def sparse_sampling(self,np.ndarray[int,ndim=1,mode='c'] nodes):
         cdef vector[int] nodes_vec

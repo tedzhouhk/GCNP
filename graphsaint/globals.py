@@ -73,7 +73,6 @@ elif int(gpu_selected) >= 0:
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"]=str(gpu_selected)
     os.environ['GPU_DEBUG']=str(gpu_selected)
-    GPU_MEM_FRACTION = 0.8
 else:
     os.environ["CUDA_VISIBLE_DEVICES"]="-1"
 args_global.gpu = int(args_global.gpu)

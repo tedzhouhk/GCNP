@@ -19,11 +19,12 @@ typedef struct ApproxNodesAdj
     std::vector<float> adj_data;
 } ApproxNodesAdj;
 
-typedef struct NodesGroup
+typedef struct MaskedNodes
 {
-    std::vector<int> simple_nodes;
-    std::vector<int> normal_nodes;
-} NodesGroup;
+    std::vector<int> nodes;
+    std::vector<int> masks;
+    std::vector<float> deg_inv;
+} MaskedNodes;
 
 class SamplerCore
 {
@@ -35,6 +36,7 @@ public:
     SamplerCore(std::vector<int> &adj_indptr_in, std::vector<int> &adj_indices_in, int num_neighbor_in, int num_thread_in);
     std::vector<int> dense_sampling(std::vector<int> &nodes);
     NodesAdj sparse_sampling(std::vector<int> &nodes);
+    MaskedNodes masked_dense_sampling(std::vector<int> &nodes);
 };
 
 class ApproxSamplerCore

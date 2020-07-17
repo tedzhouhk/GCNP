@@ -44,6 +44,65 @@ std::vector<int> SamplerCore::dense_sampling(std::vector<int> &nodes)
     return sampled_nodes;
 }
 
+MaskedNodes SamplerCore::masked_dense_sampling(std::vector<int> &nodes)
+{
+    std::vector<int> sampled_nodes;
+    std::vector<int> mask;
+    std::vector<float> deg_inv;
+    sampled_nodes.insert(sampled_nodes.begin(), nodes.begin(), nodes.end());
+    sampled_nodes.insert(sampled_nodes.end(), nodes.size() * num_neighbor, 0);
+    mask.insert(mask.end(), nodes.size() * num_neighbor, 1);
+    deg_inv.insert(deg_inv.end(), nodes.size(), 0);
+#pragma omp parallel
+    {
+        unsigned int myseed = omp_get_thread_num();
+#pragma omp for schedule(static)
+        for (int i = 0; i < nodes.size(); i++)
+        {
+            int node = nodes[i];
+            int deg = adj_indptr[node + 1] - adj_indptr[node];
+            if (deg > num_neighbor)
+            {
+                for (int j = 0; j < num_neighbor; j++)
+                {
+                    int pos = nodes.size() + i * num_neighbor + j;
+                    int choose;
+                    if (adj_indptr[node + 1] - adj_indptr[node] > 0)
+                    {
+                        choose = rand_r(&myseed) % (adj_indptr[node + 1] - adj_indptr[node]);
+                        choose = adj_indices[adj_indptr[node] + choose];
+                    }
+                    else
+                    {
+                        choose = node;
+                    }
+                    sampled_nodes[pos] = choose;
+                }
+                deg_inv[i] = static_cast<double>(1) / num_neighbor;
+            }
+            else
+            {
+                for (int j = 0; j < deg; j++)
+                {
+                    int pos = nodes.size() + i * num_neighbor + j;
+                    sampled_nodes[pos] = adj_indices[adj_indptr[node] + j];
+                }
+                deg_inv[i] = static_cast<double>(1) / deg;
+                for (int j = deg; j < num_neighbor; j++)
+                {
+                    int mask_pos = i * num_neighbor + j;
+                    mask[mask_pos] = 0;
+                }
+            }
+        }
+    }
+    MaskedNodes ans;
+    ans.nodes = sampled_nodes;
+    ans.masks = mask;
+    ans.deg_inv = deg_inv;
+    return ans;
+}
+
 NodesAdj SamplerCore::sparse_sampling(std::vector<int> &nodes)
 {
     std::vector<int> sampled_nodes;
