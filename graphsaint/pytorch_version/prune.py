@@ -52,6 +52,22 @@ class Lasso(nn.Module):
                 torch.clamp(self.beta, max=torch.mean(self.beta[mask_out]))
         return mask_out
 
+    def seperated_clip_beta(self, self_budget, neigh_budget, beta_clip=False):
+        with torch.no_grad():
+            beta_self = self.beta[:int(self.beta.shape[0] / 2)]
+            beta_neigh = self.beta[int(self.beta.shape[0] / 2):]
+            mask_out = torch.ones(self.beta.shape[0], dtype=bool)
+            _, indices = torch.sort(torch.abs(beta_self), descending=False)
+            mask_out[indices[:int(beta_self.shape[0] * self_budget)]] = 0
+            _, indices = torch.sort(torch.abs(beta_neigh), descending=False)
+            indices += beta_self.shape[0]
+            mask_out[indices[:int(beta_self.shape[0] * neigh_budget)]] = 0
+            self.mask_out = mask_out
+            if beta_clip:
+                torch.clamp(self.beta, max=torch.mean(self.beta[mask_out]))
+        return mask_out
+                
+
     def optimize_weight(self, inputs, ref, mask_in):
         self.weight_optimizer.zero_grad()
         self.beta.requires_grad = False

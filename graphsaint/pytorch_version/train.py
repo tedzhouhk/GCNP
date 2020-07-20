@@ -216,8 +216,6 @@ def train(train_phases,
                 .format(f1mic_test, f1mac_test, t_forward + t_sampling, t_forward,
                         t_sampling),
                 style='red')        
-    printf("Total training time: {:6.2f} sec".format(time_train), style='red')
-
 
 def get_model(train_phases, train_params, arch_gcn, model, minibatch,
               minibatch_eval, model_eval, inf_params):
@@ -296,6 +294,9 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
     if not args_global.cpu_eval:
         model_eval = model
         minibatch_eval = minibatch
+    prune_device = torch.device("cuda")
+    if args_global.cpu_prune:
+        prune_device = torch.device("cpu")
     mask = torch.ones(model_eval.num_classes, dtype=bool)
     layers = [model_eval.classifier]
     names = ['classifier']
@@ -331,12 +332,6 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
                                    torch.where(lassos[-1].mask_out[o * dim:(
                                        o + 1) * dim] == True)[0].shape[0] /
                                    total * split * prune_params['budget'][i])
-                # budgets=[0.65]
-                # budgets.append(1-budgets[-1])
-                # budgets=np.array(budgets)
-                # budgets/=budgets.mean()
-                # budgets*=prune_params['budget'][i]
-                # budgets=1-budgets
             elif prune_params['dynamic'] == 'svd':
                 budgets = list()
                 split = layer.order + 1
@@ -357,38 +352,47 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
                 budgets /= budgets.mean()
                 budgets *= prune_params['budget'][i]
                 budgets = 1 - budgets
+            elif prune_params['dynamic'] == 'manual':
+                budgets = list()
+                budgets.append(1 - prune_params['manual_self'])
+                budgets.append(1 - prune_params['manual_neigh'])
+            clip_separate=False
         else:
             # for middle GCN layers, prune all orders jointly
             optimize_phase = [0]
             stack_feature = layer.order
             mask = [mask]
-            budgets = [1 - prune_params['budget'][i]]
+            if i == len(layers) - 2 and prune_params['dynamic'] == 'manual':
+                budgets = [1]
+                self_budget = 1 - prune_params['manual_self']
+                neigh_budget = 1 - prune_params['manual_neigh']
+                clip_separate = True
+            else:
+                budgets = [1 - prune_params['budget'][i]]
+                clip_separate = False
         for o in optimize_phase:
             print('optimizing {} phase {}:'.format(name, o))
-            # handle=layer.f_lin[o].register_forward_hook(get_activation)
-            # evaluate_full_batch(model_eval,minibatch_eval,mode='val')
-            # handle.remove()
             activation = model_eval.get_input_activation(
                 *minibatch.one_batch(mode='val'), layer_step)
             if stack_feature == 0:
-                feat = activation.detach().cuda()
+                feat = activation.detach().to(prune_device)
                 del activation
                 for _ in range(o):
-                    feat = torch.sparse.mm(minibatch.adj_val_norm, feat)
-                weight = torch.transpose(layer.f_lin[o].weight, 0, 1).cuda()
+                    feat = torch.sparse.mm(minibatch.adj_val_norm.to(prune_device), feat)
+                weight = torch.transpose(layer.f_lin[o].weight, 0, 1).to(prune_device)
             else:
                 weight_split = [0]
-                _feat = [activation.detach().cuda()]
+                _feat = [activation.detach().to(prune_device)]
                 del activation
                 for _ in range(stack_feature):
                     _feat.append(
-                        torch.sparse.mm(minibatch.adj_val_norm, _feat[-1]))
+                        torch.sparse.mm(minibatch.adj_val_norm.to(prune_device), _feat[-1]))
                 feat = torch.cat(_feat, 0)
                 del _feat
                 weight = list()
                 for p in range(stack_feature + 1):
                     weight.append(
-                        torch.transpose(layer.f_lin[p].weight, 0, 1).cuda())
+                        torch.transpose(layer.f_lin[p].weight, 0, 1).to(prune_device))
                     weight_split.append(weight_split[-1] + weight[-1].shape[1])
                 weight = torch.cat(weight, 1)
             ref = torch.mm(feat, weight).detach()
@@ -400,7 +404,7 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
                       prune_params['beta_lr'], prune_params['weight_lr']))
             if args_global.gpu >= 0:
                 lassos[-1] = lassos[-1].cuda()
-            if prune_params['budget'][i] == 1:
+            if budgets[o] == 0:
                 mask_out = lassos[-1].clip_beta(budgets[o],
                                                 prune_params['beta_clip'])
                 continue
@@ -416,13 +420,21 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
                         train_nodes,
                         (int(feat.shape[0] / prune_params['beta_batch'])))
                     for batch in batches:
+                        _feat = feat[batch]
+                        _ref = ref[batch]
+                        if args_global.gpu >= 0:
+                            _feat = _feat.cuda()
+                            _ref = _ref.cuda()
                         loss = lassos[-1].optimize_beta(
-                            feat[batch], ref[batch], mask[o])
+                            _feat, _ref, mask[o])
                     print('    epoch {} loss: {}'.format(e, loss))
                     beta_loss.append(loss)
                     lassos[-1].lmbd_step()
-                mask_out = lassos[-1].clip_beta(budgets[o],
-                                                prune_params['beta_clip'])
+                if not clip_separate:
+                    mask_out = lassos[-1].clip_beta(budgets[o],
+                                                    prune_params['beta_clip'])
+                else:
+                    mask_out = lassos[-1].seperated_clip_beta(self_budget,neigh_budget,prune_params['beta_clip'])
                 # optimize weight
                 print('  optimizing weight ...')
                 for e in range(prune_params['weight_epoch']):
@@ -431,8 +443,13 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
                         train_nodes,
                         (int(feat.shape[0] / prune_params['weight_batch'])))
                     for batch in batches:
+                        _feat = feat[batch]
+                        _ref = ref[batch]
+                        if args_global.gpu >= 0:
+                            _feat = _feat.cuda()
+                            _ref = _ref.cuda()
                         loss = lassos[-1].optimize_weight(
-                            feat[batch], ref[batch], mask[o])
+                            _feat, _ref, mask[o])
                     print('    epoch {} loss: {}'.format(e, loss))
                     weight_loss.append(loss)
                 lassos[-1].norm()

@@ -195,7 +195,7 @@ class GraphSAINT(nn.Module):
                         assert layer.order==1
                         if last_layer:
                             support,subg_adj=minibatch_sampler.sparse_sampling(supports[0])
-                            subg_adj=_coo_scipy2torch(subg_adj)
+                            subg_adj=_coo_scipy2torch(subg_adj,coalesce=False)
                             if self.use_cuda:
                                 subg_adj = subg_adj.cuda()
                             subg_adjs.insert(0, subg_adj)
@@ -210,7 +210,8 @@ class GraphSAINT(nn.Module):
                                 if self.use_cuda:
                                     deg_inv = deg_inv.cuda()
                             supports.insert(0, support)
-                t_sampling+=time.time()-t_sampling_s
+                t_sampling += time.time() - t_sampling_s
+                torch.cuda.synchronize()
                 t_forward_s = time.time()
                 support_idx=0
                 _feat=self.feat_full[supports[support_idx]]
@@ -227,7 +228,7 @@ class GraphSAINT(nn.Module):
                         else:
                             _feat_self = self.feat_full[supports[support_idx][:supports[support_idx + 1].shape[0]]]
                             if not masked_sampling:
-                                _feat_neigh = _feat[supports[support_idx + 1].shape[0]:].view(supports[support_idx + 1].shape[0], inf_params['neighbors'], _feat.shape[1])
+                                _feat_neigh = _feat[supports[support_idx + 1].shape[0]:].reshape(supports[support_idx + 1].shape[0], inf_params['neighbors'], _feat.shape[1])
                                 _feat = layer.dense_forward(_feat_self, _feat_neigh)
                             else:
                                 _feat_neigh = torch.zeros(supports[support_idx].shape[0] - supports[support_idx + 1].shape[0], _feat_self.shape[1], device='cuda')
@@ -424,7 +425,7 @@ class PrunedGraphSAINT(nn.Module):
                         assert layer.order==1
                         if last_layer:
                             support,subg_adj=minibatch_sampler.sparse_sampling(supports[0])
-                            subg_adj=_coo_scipy2torch(subg_adj)
+                            subg_adj=_coo_scipy2torch(subg_adj,coalesce=False)
                             if self.use_cuda:
                                 subg_adj=subg_adj.cuda()
                             supports.insert(0,support)
@@ -432,12 +433,13 @@ class PrunedGraphSAINT(nn.Module):
                         else:
                             support=minibatch_sampler.dense_sampling(supports[0])
                             supports.insert(0,support)
-                t_sampling+=time.time()-t_sampling_s
+                t_sampling += time.time() - t_sampling_s
+                torch.cuda.synchronize()
                 t_forward_s=time.time()
                 support_idx = 0
-                _feat_self=_feat_self_full[supports[0][:supports[1].shape[0]]]
-                _feat_neigh=_feat_neigh_full[supports[0][supports[1].shape[0]:]].view(supports[1].shape[0],inf_params['neighbors'],_feat_self.shape[1])
-                first_layer=True
+                _feat_self = _feat_self_full[supports[0][:supports[1].shape[0]]]
+                _feat_neigh = _feat_neigh_full[supports[0][supports[1].shape[0]:]].reshape(supports[1].shape[0], inf_params['neighbors'], _feat_neigh_full.shape[1])
+                first_layer = True
                 for layer in self.aggregators:
                     if support_idx==len(supports)-2:
                         last_layer=True
@@ -477,7 +479,7 @@ class PrunedGraphSAINT(nn.Module):
         print('start minibatch inference ...')
         assert len(self.aggregators)==2
         self.eval()
-        minibatch_sampler = ApproxMinibatchSampler(adj.indptr, adj.indices, saved_activation_id, inf_params['neighbors'], num_thread=40)
+        minibatch_sampler = ApproxMinibatchSampler(adj.indptr, adj.indices, saved_activation_id, inf_params['neighbors'], adj.shape[0], num_thread=40)
         t_forward=0
         t_sampling=0
         with torch.no_grad():
@@ -495,7 +497,7 @@ class PrunedGraphSAINT(nn.Module):
                 supports = list()
                 support = {'root': root_nodes}
                 unknown_neighbor, known_neighbor, subg_adj = minibatch_sampler.approx_sparse_sampling(root_nodes)
-                subg_adj = _coo_scipy2torch(subg_adj)
+                subg_adj = _coo_scipy2torch(subg_adj,coalesce=False)
                 if self.use_cuda:
                     subg_adj = subg_adj.cuda()
                 support['unknown_neighbor'] = unknown_neighbor
@@ -510,6 +512,7 @@ class PrunedGraphSAINT(nn.Module):
                 supports.append(support)
                 t_sampling += time.time() - t_sampling_s
                 # forward propagation
+                torch.cuda.synchronize()
                 t_forward_s = time.time()
                 if self.first_layer_pruned:
                     feat_self = _feat_self_full[supports[1]['root']]
@@ -519,14 +522,12 @@ class PrunedGraphSAINT(nn.Module):
                     feat_self = feat_mix[:supports[1]['root'].shape[0]]
                     feat_neigh_sparse = feat_mix[root_nodes.shape[0]:]
                 feat_neigh_dense = _feat_neigh_full[supports[1]['dense_neighbor']]
-                feat_neigh_dense = feat_neigh_dense.view(int(feat_neigh_dense.shape[0] / inf_params['neighbors']), inf_params['neighbors'], feat_neigh_dense.shape[1])
+                feat_neigh_dense = feat_neigh_dense.reshape(int(feat_neigh_dense.shape[0] / inf_params['neighbors']), inf_params['neighbors'], feat_neigh_dense.shape[1])
                 _feat = self.aggregators[0].mixed_forward(feat_self, feat_neigh_sparse, feat_neigh_dense, supports[0]['adj'])
-                # save the activation for root nodes
-                saved_activation[root_nodes] = _feat[:root_nodes.shape[0]]
-                minibatch_sampler.update_known_idx(root_nodes)
                 feat_self = _feat[:root_nodes.shape[0]]
+                saved_activation[root_nodes] = feat_self
                 feat_neigh = torch.cat((_feat[root_nodes.shape[0]:], saved_activation[supports[0]['known_neighbor']]), 0)
-                _feat=self.aggregators[1].sparse_forward(feat_self, feat_neigh, supports[0]['adj'])
+                _feat = self.aggregators[1].sparse_forward(feat_self, feat_neigh, supports[0]['adj'])
                 F.normalize(_feat,p=2,dim=1,out=_feat)
                 pred=self.classifier.inplace_forward(_feat)
                 pred=self.predict(pred)
@@ -535,4 +536,5 @@ class PrunedGraphSAINT(nn.Module):
                 t_forward+=time.time()-t_forward_s
                 preds.append(pred.cpu().numpy())
                 labels.append(label.cpu().numpy())
+                minibatch_sampler.update_known_idx(root_nodes)
         return preds,labels,t_forward,t_sampling

@@ -164,24 +164,26 @@ NodesAdj SamplerCore::sparse_sampling(std::vector<int> &nodes)
     return ans;
 }
 
-ApproxSamplerCore::ApproxSamplerCore(std::vector<int> &adj_indptr_in, std::vector<int> &adj_indices_in, std::vector<int> &nodes_known_in, int num_neighbor_in, int num_thread_in)
+ApproxSamplerCore::ApproxSamplerCore(std::vector<int> &adj_indptr_in, std::vector<int> &adj_indices_in, std::vector<int> &nodes_known_in, int num_neighbor_in, int num_nodes, int num_thread_in)
 {
     adj_indptr = adj_indptr_in;
     adj_indices = adj_indices_in;
     num_neighbor = num_neighbor_in;
     num_thread = num_thread_in;
     omp_set_num_threads(num_thread);
+    nodes_known.insert(nodes_known.begin(), num_nodes, 0);
     for (auto it = nodes_known_in.begin(); it != nodes_known_in.end(); it++)
     {
-        nodes_known.insert(*it);
+        nodes_known[*it] = 1;
     }
 }
 
 void ApproxSamplerCore::update_known_idx(std::vector<int> &nodes)
 {
-    for (auto it = nodes.begin(); it != nodes.end(); it++)
+#pragma omp parallel for
+    for (int i = 0; i < nodes.size(); i++)
     {
-        nodes_known.insert(*it);
+        nodes_known[nodes[i]] = 1;
     }
     return;
 }
@@ -247,7 +249,7 @@ ApproxNodesAdj ApproxSamplerCore::approx_sparse_sampling(std::vector<int> &nodes
             for (int j = begin; j < end; j++)
             {
                 int neigh = adj_indices[j];
-                if (nodes_known.find(neigh) == nodes_known.end())
+                if (nodes_known[neigh] == 0)
                 {
                     sampled_unknown_adj_col_thread[tid].push_back(sampled_unknown_nodes_thread[tid].size());
                     sampled_unknown_nodes_thread[tid].push_back(neigh);

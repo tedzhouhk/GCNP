@@ -55,10 +55,10 @@ cdef extern from "sampler_core.h":
     cppclass ApproxSamplerCore:
         vector[int] adj_indptr
         vector[int] adj_indices
-        unordered_set[int] nodes_known
+        vector[int] nodes_known
         int num_neighbor
         int num_thread
-        ApproxSamplerCore(vector[int]&, vector[int]&, vector[int]&, int, int)
+        ApproxSamplerCore(vector[int]&, vector[int]&, vector[int]&, int, int, int)
         void update_known_idx(vector[int]&)
         vector[int] dense_sampling(vector[int]&)
         ApproxNodesAdj approx_sparse_sampling(vector[int]&)
@@ -119,14 +119,14 @@ cdef class MinibatchSampler:
 cdef class ApproxMinibatchSampler:
     cdef ApproxSamplerCore* cobj
 
-    def __init__(self,np.ndarray[int,ndim=1,mode='c'] adj_indptr,np.ndarray[int,ndim=1,mode='c'] adj_indices,np.ndarray[int,ndim=1,mode='c'] known_idx,int num_neighbor,int num_thread=40):
+    def __init__(self,np.ndarray[int,ndim=1,mode='c'] adj_indptr,np.ndarray[int,ndim=1,mode='c'] adj_indices,np.ndarray[int,ndim=1,mode='c'] known_idx,int num_neighbor,int num_nodes, int num_thread=40):
         cdef vector[int] adj_indptr_vec
         cdef vector[int] adj_indices_vec
         cdef vector[int] known_idx_vec
         npy2vec_int(adj_indptr,adj_indptr_vec)
         npy2vec_int(adj_indices,adj_indices_vec)
         npy2vec_int(known_idx,known_idx_vec)
-        self.cobj=new ApproxSamplerCore(adj_indptr_vec,adj_indices_vec,known_idx_vec,num_neighbor,num_thread)
+        self.cobj=new ApproxSamplerCore(adj_indptr_vec,adj_indices_vec,known_idx_vec,num_neighbor,num_nodes,num_thread)
 
     def update_known_idx(self,np.ndarray[int,ndim=1,mode='c'] nodes):
         cdef vector[int] nodes_vec

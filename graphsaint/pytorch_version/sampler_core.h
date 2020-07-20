@@ -44,10 +44,11 @@ class ApproxSamplerCore
 public:
     std::vector<int> adj_indptr;
     std::vector<int> adj_indices;
-    std::unordered_set<int> nodes_known;
+    // std::unordered_set<int> nodes_known;
+    std::vector<int> nodes_known;
     int num_neighbor;
     int num_thread;
-    ApproxSamplerCore(std::vector<int> &adj_indptr_in, std::vector<int> &adj_indices_in, std::vector<int> &nodes_known_in, int num_neighbor_in, int num_thread_in);
+    ApproxSamplerCore(std::vector<int> &adj_indptr_in, std::vector<int> &adj_indices_in, std::vector<int> &nodes_known_in, int num_neighbor_in, int num_nodes, int num_thread_in);
     void update_known_idx(std::vector<int> &nodes);
     std::vector<int> dense_sampling(std::vector<int> &nodes);
     ApproxNodesAdj approx_sparse_sampling(std::vector<int> &nodes);
