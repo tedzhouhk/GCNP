@@ -11,7 +11,7 @@ import numpy as np
 import time
 
 
-def _coo_scipy2torch(adj, coalesce=True):
+def _coo_scipy2torch(adj, coalesce=True, use_cuda=False):
     """
     convert a scipy sparse COO matrix to torch
     """
@@ -20,8 +20,10 @@ def _coo_scipy2torch(adj, coalesce=True):
     i = torch.LongTensor(indices)
     v = torch.FloatTensor(values)
     ans = torch.sparse.FloatTensor(i, v, torch.Size(adj.shape))
-    if coalesce:
-        ans = ans.coalesce()
+    if use_cuda:
+        ans = ans.cuda()
+    # if coalesce:
+    ans = ans.coalesce()
     return ans
 
 

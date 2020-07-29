@@ -35,8 +35,9 @@ def evaluate_full_batch(model, minibatch, mode='val'):
 
 def evaluate_minibatch(model_eval, minibatch_eval, inf_params, mode='test'):
     time_s = time.time()
+    nodes = minibatch_eval.node_test if mode == 'test' else minibatch_eval.node_val
     preds, labels, t_forward, t_sampling = model_eval.minibatched_eval(
-        minibatch_eval.node_test, minibatch_eval.adj_full_norm_sp, inf_params)
+        nodes, minibatch_eval.adj_full_norm_sp, inf_params)
     preds = np.concatenate(preds, axis=0)
     labels = np.concatenate(labels, axis=0)
     f1_scores = calc_f1(labels, preds, model_eval.sigmoid_loss)
@@ -129,12 +130,16 @@ def train(train_phases,
                                map_location=lambda storage, loc: storage))
             else:
                 model_eval = model
-            loss_val, f1mic_val, f1mac_val, f_time = evaluate_full_batch(
-                model_eval, minibatch_eval, mode='val')
             printf(
                 ' TRAIN (Ep avg): loss = {:.4f}\tmic = {:.4f}\tmac = {:.4f}\ttrain time = {:.4f} sec'
                 .format(f_mean(l_loss_tr), f_mean(l_f1mic_tr),
                         f_mean(l_f1mac_tr), time_train_ep))
+            if not args_global.minibatch_eval:
+                loss_val, f1mic_val, f1mac_val, f_time = evaluate_full_batch(
+                    model_eval, minibatch_eval, mode='val')
+            else:
+                loss_val = 0
+                f1mic_val, f1mac_val, _, _, f_time = evaluate_minibatch(model, minibatch, inf_params, mode='val')
             printf(
                 ' VALIDATION:     loss = {:.4f}\tmic = {:.4f}\tmac = {:.4f}\ttime = {:.4f}s'
                 .format(loss_val, f1mic_val, f1mac_val, f_time),
@@ -186,12 +191,12 @@ def train(train_phases,
             with torch.autograd.profiler.profile(
                     use_cuda=model_eval.use_cuda) as prof:
                 f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
-                    model_eval, minibatch_eval, inf_params, mode='test')
+                    model, minibatch, inf_params, mode='test')
             sort_key = "cuda_time_total" if model_eval.use_cuda else "cpu_time_total"
             print(prof.key_averages().table(sort_by=sort_key, row_limit=10))
         else:
             f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
-                model_eval, minibatch_eval, inf_params, mode='test')
+                model, minibatch, inf_params, mode='test')
         printf(
             "Full test stats (minibatched): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\tf_total = {:.4f}s\t t_forward = {:.4f}s\tt_sampling = {:.4f}s"
             .format(f1mic_test, f1mac_test, t_forward + t_sampling, t_forward,
@@ -230,7 +235,8 @@ def get_model(train_phases, train_params, arch_gcn, model, minibatch,
     path_saver = 'pytorch_models/' + hashlib.md5(
         text.encode('utf-8')).hexdigest() + '.pkl'
     if os.path.exists(path_saver):
-        printf("Found existing model, loading and evaluating...")
+        printf("Found existing model: {}".format(path_saver))
+        model.load_state_dict(torch.load(path_saver))
         if args_global.cpu_eval:
             model_eval.load_state_dict(
                 torch.load(path_saver,
@@ -238,7 +244,6 @@ def get_model(train_phases, train_params, arch_gcn, model, minibatch,
         else:
             model_eval = model
             minibatch_eval = minibatch
-            model_eval.load_state_dict(torch.load(path_saver))
         if args_global.profile_fullbatch:
             if 'prof' in locals() or 'prof' in globals():
                 del prof
@@ -255,41 +260,32 @@ def get_model(train_phases, train_params, arch_gcn, model, minibatch,
             "Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.4f}s"
             .format(f1mic_test, f1mac_test, f_time),
             style='red')
+        if args_global.profile_minibatch:
+            if 'prof' in locals() or 'prof' in globals():
+                del prof
+            with torch.autograd.profiler.profile(
+                    use_cuda=model_eval.use_cuda) as prof:
+                f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
+                    model, minibatch, inf_params, mode='test')
+            sort_key = "cuda_time_total" if model_eval.use_cuda else "cpu_time_total"
+            print(prof.key_averages().table(sort_by=sort_key, row_limit=10))
+        else:
+            f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
+                model, minibatch, inf_params, mode='test')
+        printf(
+            "Full test stats (minibatched): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\tf_total = {:.4f}s\t t_forward = {:.4f}s\tt_sampling = {:.4f}s"
+            .format(f1mic_test, f1mac_test, t_forward + t_sampling, t_forward,
+                    t_sampling),
+            style='red')
     else:
         train(train_phases,
               model,
               minibatch,
               minibatch_eval,
               model_eval,
-              path_saver=path_saver)
-    if not args_global.cpu_eval:
-        model_eval = model
-        minibatch_eval = minibatch
-    if args_global.profile_minibatch:
-        if 'prof' in locals() or 'prof' in globals():
-            del prof
-        with torch.autograd.profiler.profile(
-                use_cuda=model_eval.use_cuda) as prof:
-            f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
-                model_eval, minibatch_eval, inf_params, mode='test')
-        sort_key = "cuda_time_total" if model_eval.use_cuda else "cpu_time_total"
-        print(prof.key_averages().table(sort_by=sort_key, row_limit=10))
-    else:
-        f1mic_test, f1mac_test, t_forward, t_sampling, t_total = evaluate_minibatch(
-            model_eval, minibatch_eval, inf_params, mode='test')
-    printf(
-        "Full test stats (minibatched): \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\tf_total = {:.4f}s\t t_forward = {:.4f}s\tt_sampling = {:.4f}s"
-        .format(f1mic_test, f1mac_test, t_forward + t_sampling, t_forward,
-                t_sampling),
-        style='red')
-
-
-# activation=[]
-# def get_activation(module, input, output):
-#     activation.clear()
-#     activation.append(input[0].detach())
-
-
+              path_saver=path_saver,
+              inf_params=inf_params)
+    
 def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
     if not args_global.cpu_eval:
         model_eval = model

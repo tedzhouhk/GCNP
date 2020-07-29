@@ -33,6 +33,7 @@ parser.add_argument("--timeline",default=False,action="store_true",help="to save
 parser.add_argument("--tensorboard",default=False,action="store_true",help="to save data to tensorboard or not")
 parser.add_argument("--dualGPU",default=False,action="store_true",help="whether to distribute the model to two GPUs")
 parser.add_argument("--cpu_eval", default=False, action="store_true", help="whether to use CPU to do evaluation")
+parser.add_argument("--minibatch_eval",default=False, action="store_true", help="whether to use minibatch to do evaluation")
 parser.add_argument("--cpu_prune", default=False, action="store_true", help="whether to use CPU to do pruning")
 parser.add_argument("--saved_model_path", default="", type=str, help="path to pretrained model file")
 parser.add_argument("--profile_minibatch", default=False, action="store_true", help="whether to apply torch.autograd.profiler.profile on minibatch inference")

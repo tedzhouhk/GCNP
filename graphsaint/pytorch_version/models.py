@@ -195,9 +195,7 @@ class GraphSAINT(nn.Module):
                         assert layer.order==1
                         if last_layer:
                             support,subg_adj=minibatch_sampler.sparse_sampling(supports[0])
-                            subg_adj=_coo_scipy2torch(subg_adj,coalesce=False)
-                            if self.use_cuda:
-                                subg_adj = subg_adj.cuda()
+                            subg_adj=_coo_scipy2torch(subg_adj,coalesce=False,use_cuda=self.use_cuda)
                             subg_adjs.insert(0, subg_adj)
                             supports.insert(0,support)
                             last_layer=False
@@ -425,9 +423,7 @@ class PrunedGraphSAINT(nn.Module):
                         assert layer.order==1
                         if last_layer:
                             support,subg_adj=minibatch_sampler.sparse_sampling(supports[0])
-                            subg_adj=_coo_scipy2torch(subg_adj,coalesce=False)
-                            if self.use_cuda:
-                                subg_adj=subg_adj.cuda()
+                            subg_adj=_coo_scipy2torch(subg_adj,coalesce=False,use_cuda=self.use_cuda)
                             supports.insert(0,support)
                             last_layer=False
                         else:
@@ -497,9 +493,7 @@ class PrunedGraphSAINT(nn.Module):
                 supports = list()
                 support = {'root': root_nodes}
                 unknown_neighbor, known_neighbor, subg_adj = minibatch_sampler.approx_sparse_sampling(root_nodes)
-                subg_adj = _coo_scipy2torch(subg_adj,coalesce=False)
-                if self.use_cuda:
-                    subg_adj = subg_adj.cuda()
+                subg_adj = _coo_scipy2torch(subg_adj,coalesce=False,use_cuda=self.use_cuda)
                 support['unknown_neighbor'] = unknown_neighbor
                 support['known_neighbor'] = known_neighbor
                 support['adj'] = subg_adj
