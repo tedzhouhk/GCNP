@@ -7,18 +7,19 @@ network:
     bias: 'norm'
 params:
   - lr: 0.01
-    dropout: 0.45
+    dropout: 0.3
     weight_decay: 0.0
     sample_coverage: 1000
 phase:
   - end: 200
-    sampler: 'edge'
-    size_subg_edge: 20000
+    sampler: 'rw'
+    num_root: 4000
+    depth: 10
 prune:
   - budget:
       - 1
-      - 1
-      - 0.2
+      - 0.5
+      - 0.5
     dynamic: 'manual'
     manual_neigh: 0.5 # manually input neighbor budget for last layer
     manual_self: 1 # manually input self budget for last layer
@@ -48,9 +49,14 @@ prune:
     weight_epoch: 20
 retrain_phase:
   - end: 200
-    sampler: 'edge'
-    size_subg_edge: 20000
+    sampler: 'rw'
+    num_root: 4000
+    depth: 10
 batch_inference:
   - batch_size: 512
     neighbors: 32 # number of neighbors except for last layer
     approx: True
+
+
+# 0.7908/29.1842
+# 0.7916/23.9025

@@ -9,7 +9,7 @@ params:
   - lr: 0.01
     dropout: 0.1
     weight_decay: 0.0
-    sample_coverage: 50
+    sample_coverage: 1000
 phase:
   - end: 100
     sampler: 'rw'
@@ -18,7 +18,7 @@ phase:
 prune:
   - budget:
       - 1
-      - 1
+      - 0.5
       - 0.5
     dynamic: 'manual'
     manual_neigh: 0.5 # manually input neighbor budget for last layer

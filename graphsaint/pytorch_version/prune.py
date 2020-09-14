@@ -42,14 +42,38 @@ class Lasso(nn.Module):
 
     def clip_beta(self, budget, beta_clip=False):
         with torch.no_grad():
-            _, indices = torch.sort(torch.abs(self.beta), descending=False)
+            # _, indices = torch.sort(torch.abs(self.beta), descending=False)
+            # self.beta[indices[:int(self.beta.shape[0] * budget)]] = 0
+            # mask_out = torch.ones(self.beta.shape[0], dtype=bool)
+            # mask_out[indices[:int(self.beta.shape[0] * budget)]] = 0
+            # self.mask_out = mask_out
+            # if beta_clip:
+            #     # clip to mean of remaining beta
+            #     torch.clamp(self.beta, max=torch.mean(self.beta[mask_out]))
+            
+            # first k
+            # self.beta[:] = 1
+            # self.beta[:int(self.beta.shape[0] * budget)] = 0
+            # mask_out = torch.ones(self.beta.shape[0], dtype=bool)
+            # mask_out[:int(self.beta.shape[0] * budget)] = 0
+            # self.mask_out = mask_out
+
+            # large abs
+            # _,indices=torch.sort(torch.sum(torch.abs(self.weight),dim=1),descending=False)
+            # self.beta[:] = 1
+            # self.beta[indices[:int(self.beta.shape[0] * budget)]] = 0
+            # mask_out = torch.ones(self.beta.shape[0], dtype=bool)
+            # mask_out[indices[:int(self.beta.shape[0] * budget)]] = 0
+            # self.mask_out = mask_out
+
+            # random
+            _,indices=torch.sort(torch.randn(self.beta.shape),descending=False)
+            self.beta[:] = 1
             self.beta[indices[:int(self.beta.shape[0] * budget)]] = 0
             mask_out = torch.ones(self.beta.shape[0], dtype=bool)
             mask_out[indices[:int(self.beta.shape[0] * budget)]] = 0
             self.mask_out = mask_out
-            if beta_clip:
-                # clip to mean of remaining beta
-                torch.clamp(self.beta, max=torch.mean(self.beta[mask_out]))
+
         return mask_out
 
     def seperated_clip_beta(self, self_budget, neigh_budget, beta_clip=False):

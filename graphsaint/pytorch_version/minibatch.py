@@ -22,8 +22,8 @@ def _coo_scipy2torch(adj, coalesce=True, use_cuda=False):
     ans = torch.sparse.FloatTensor(i, v, torch.Size(adj.shape))
     if use_cuda:
         ans = ans.cuda()
-    # if coalesce:
-    ans = ans.coalesce()
+    if coalesce:
+        ans = ans.coalesce()
     return ans
 
 
@@ -201,9 +201,7 @@ class Minibatch:
                       self.norm_aggr_train,
                       num_proc=args_global.num_cpu_core)
             adj = adj_norm(adj, deg=self.deg_train[self.node_subgraph])
-            adj = _coo_scipy2torch(adj.tocoo())
-            if self.use_cuda:
-                adj = adj.cuda()
+            adj = _coo_scipy2torch(adj.tocoo(),use_cuda=self.use_cuda)
             self.batch_num += 1
         norm_loss = self.norm_loss_test if mode in ['val', 'test'
                                                     ] else self.norm_loss_train

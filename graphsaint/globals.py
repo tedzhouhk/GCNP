@@ -39,6 +39,7 @@ parser.add_argument("--saved_model_path", default="", type=str, help="path to pr
 parser.add_argument("--profile_minibatch", default=False, action="store_true", help="whether to apply torch.autograd.profiler.profile on minibatch inference")
 parser.add_argument("--profile_fullbatch", default=False, action="store_true", help="whether to apply torch.autograd.profiler.profile on fullbatch inference")
 parser.add_argument("--profile_approxminibatch", default=False, action="store_true", help="whether to apply torch.autograd.profiler.profile on approximate minibatch inference")
+parser.add_argument("--cpu_minibatch", default=False, action="store_true", help="whether to use CPU to do minibatch inference")
 args_global = parser.parse_args()
 
 

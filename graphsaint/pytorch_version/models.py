@@ -144,7 +144,7 @@ class GraphSAINT(nn.Module):
             # preds,labels,labels_converted = self(node_subgraph, adj_subgraph)
             # loss = self._loss(preds,labels_converted,norm_loss_subgraph)
             assert node_subgraph.shape[0]==self.feat_full.shape[0]
-            _feat=self.feat_full
+            _feat = self.feat_full
             for layer in self.aggregators:
                 feat=layer.inplace_forward(_feat,adj_subgraph)
                 del _feat
@@ -152,8 +152,8 @@ class GraphSAINT(nn.Module):
             F.normalize(_feat,p=2,dim=1,out=_feat)
             preds=self.classifier.inplace_forward(_feat)
             del _feat
-            labels_converted=self.label_full if self.sigmoid_loss else self.label_full_cat
-            loss=self._loss(preds,labels_converted,norm_loss_subgraph)
+            labels_converted = self.label_full if self.sigmoid_loss else self.label_full_cat
+            loss = self._loss(preds, labels_converted, norm_loss_subgraph)
         return loss,self.predict(preds),self.label_full
 
     def get_input_activation(self,node_subgraph,adj_subgraph,norm_loss_subgraph,layer_step):
@@ -163,7 +163,7 @@ class GraphSAINT(nn.Module):
             if layer_step==0:
                 return self.feat_full
             else:
-                _feat=self.feat_full
+                _feat = self.feat_full
                 for layer in self.aggregators[:layer_step]:
                     feat=layer.inplace_forward(_feat,adj_subgraph)
                     del _feat
@@ -195,7 +195,7 @@ class GraphSAINT(nn.Module):
                         assert layer.order==1
                         if last_layer:
                             support,subg_adj=minibatch_sampler.sparse_sampling(supports[0])
-                            subg_adj=_coo_scipy2torch(subg_adj,coalesce=False,use_cuda=self.use_cuda)
+                            subg_adj=_coo_scipy2torch(subg_adj,coalesce=True,use_cuda=self.use_cuda)
                             subg_adjs.insert(0, subg_adj)
                             supports.insert(0,support)
                             last_layer=False
@@ -212,7 +212,7 @@ class GraphSAINT(nn.Module):
                 torch.cuda.synchronize()
                 t_forward_s = time.time()
                 support_idx=0
-                _feat=self.feat_full[supports[support_idx]]
+                _feat = self.feat_full[supports[support_idx]]
                 for layer in self.aggregators:
                     if support_idx==len(supports)-2:
                         last_layer=True
@@ -366,7 +366,7 @@ class PrunedGraphSAINT(nn.Module):
             # preds,labels,labels_converted = self(node_subgraph, adj_subgraph)
             # loss = self._loss(preds,labels_converted,norm_loss_subgraph)
             assert node_subgraph.shape[0]==self.feat_full.shape[0]
-            _feat=self.feat_full
+            _feat = self.feat_full
             first_layer=self.first_layer_pruned
             # import pdb; pdb.set_trace()
             for layer in self.aggregators:
@@ -377,7 +377,7 @@ class PrunedGraphSAINT(nn.Module):
             F.normalize(_feat,p=2,dim=1,out=_feat)
             preds=self.classifier.inplace_forward(_feat)
             del _feat
-            labels_converted=self.label_full if self.sigmoid_loss else self.label_full_cat
+            labels_converted = self.label_full if self.sigmoid_loss else self.label_full_cat
             loss=self._loss(preds,labels_converted,norm_loss_subgraph)
         return loss, self.predict(preds), self.label_full
         
@@ -423,7 +423,7 @@ class PrunedGraphSAINT(nn.Module):
                         assert layer.order==1
                         if last_layer:
                             support,subg_adj=minibatch_sampler.sparse_sampling(supports[0])
-                            subg_adj=_coo_scipy2torch(subg_adj,coalesce=False,use_cuda=self.use_cuda)
+                            subg_adj=_coo_scipy2torch(subg_adj,coalesce=True,use_cuda=self.use_cuda)
                             supports.insert(0,support)
                             last_layer=False
                         else:
@@ -493,7 +493,7 @@ class PrunedGraphSAINT(nn.Module):
                 supports = list()
                 support = {'root': root_nodes}
                 unknown_neighbor, known_neighbor, subg_adj = minibatch_sampler.approx_sparse_sampling(root_nodes)
-                subg_adj = _coo_scipy2torch(subg_adj,coalesce=False,use_cuda=self.use_cuda)
+                subg_adj = _coo_scipy2torch(subg_adj,coalesce=True,use_cuda=self.use_cuda)
                 support['unknown_neighbor'] = unknown_neighbor
                 support['known_neighbor'] = known_neighbor
                 support['adj'] = subg_adj

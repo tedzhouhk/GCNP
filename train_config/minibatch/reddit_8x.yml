@@ -18,8 +18,8 @@ phase:
 prune:
   - budget:
       - 1
-      - 1
-      - 0.05
+      - 0.125
+      - 0.125
     dynamic: 'manual'
     manual_neigh: 0.125 # manually input neighbor budget for last layer
     manual_self: 1 # manually input self budget for last layer

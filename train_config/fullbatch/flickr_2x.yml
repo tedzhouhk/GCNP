@@ -50,7 +50,7 @@ retrain_phase:
     sampler: 'rw'
     num_root: 6000
     depth: 2
-# batch_inference:
-#   - batch_size: 512
-#     neighbors: 32 # number of neighbors except for last layer
-#     approx: True
+batch_inference:
+  - batch_size: 512
+    neighbors: 32 # number of neighbors except for last layer
+    approx: True
