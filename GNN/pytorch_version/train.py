@@ -1,12 +1,12 @@
-from graphsaint.globals import *
-from graphsaint.pytorch_version.models import GraphSAINT, PrunedGraphSAINT
-from graphsaint.pytorch_version.minibatch import Minibatch
-from graphsaint.utils import *
-from graphsaint.metric import *
-from graphsaint.pytorch_version.utils import *
-from graphsaint.pytorch_version.prune import Lasso
-from graphsaint.pytorch_version.plot import *
-# from graphsaint.pytorch_version.gpu_profile import gpu_profile
+from GNN.globals import *
+from GNN.pytorch_version.models import GraphSAINT, PrunedGraphSAINT
+from GNN.pytorch_version.minibatch import Minibatch
+from GNN.utils import *
+from GNN.metric import *
+from GNN.pytorch_version.utils import *
+from GNN.pytorch_version.prune import Lasso
+from GNN.pytorch_version.plot import *
+# from GNN.pytorch_version.gpu_profile import gpu_profile
 import hashlib
 import torch
 import time

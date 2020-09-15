@@ -21,8 +21,8 @@ from libc.stdlib cimport rand
 cdef extern from "stdlib.h":
     int RAND_MAX
 
-cimport graphsaint.cython_utils as cutils
-import graphsaint.cython_utils as cutils
+cimport GNN.cython_utils as cutils
+import GNN.cython_utils as cutils
 
 
 

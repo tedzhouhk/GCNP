@@ -1,4 +1,4 @@
-from graphsaint.globals import *
+from GNN.globals import *
 import numpy as np
 import scipy.sparse
 import abc
@@ -6,7 +6,7 @@ import time
 import math
 import pdb
 from math import ceil
-import graphsaint.cython_sampler as cy
+import GNN.cython_sampler as cy
 
 
 class graph_sampler:

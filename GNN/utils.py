@@ -6,7 +6,7 @@ from sklearn.preprocessing import StandardScaler
 import os
 import yaml
 import scipy.sparse as sp
-from graphsaint.globals import *
+from GNN.globals import *
 
 
 def load_data(prefix, normalize=True):

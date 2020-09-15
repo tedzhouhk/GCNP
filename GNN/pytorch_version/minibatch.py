@@ -1,8 +1,8 @@
-from graphsaint.globals import *
+from GNN.globals import *
 import math
-from graphsaint.utils import *
-from graphsaint.graph_samplers import *
-from graphsaint.norm_aggr import *
+from GNN.utils import *
+from GNN.graph_samplers import *
+from GNN.norm_aggr import *
 import torch
 import scipy.sparse as sp
 import scipy

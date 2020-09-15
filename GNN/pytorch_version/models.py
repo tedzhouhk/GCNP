@@ -2,11 +2,11 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import numpy as np
-from graphsaint.utils import *
-import graphsaint.pytorch_version.layers as layers
+from GNN.utils import *
+import GNN.pytorch_version.layers as layers
 from tqdm import tqdm
-from graphsaint.pytorch_version.minibatch_sampler import *
-from graphsaint.pytorch_version.minibatch import _coo_scipy2torch
+from GNN.pytorch_version.minibatch_sampler import *
+from GNN.pytorch_version.minibatch import _coo_scipy2torch
 from multiprocessing import Process, Pipe
 
 class GraphSAINT(nn.Module):
