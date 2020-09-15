@@ -42,14 +42,14 @@ All the parameters used in training, pruning and re-training are stored in .yml 
 We have two Cython modules that need to be compiled before running. To compile the modules, run the following from the root directory:
 
 ```
-python graphsaint/setup.py build_ext --inplace
-python graphsaint/pytorch_version/setup.py build_ext --inplace
+python GNN/setup.py build_ext --inplace
+python GNN/pytorch_version/setup.py build_ext --inplace
 ```
 
 To run the code
 
 ```
-python -m graphsaint.pytorch_version.train --data_perfix <path-to-dataset-folder> --train_config <path-to-config-file>
+python -m GNN.pytorch_version.train --data_perfix <path-to-dataset-folder> --train_config <path-to-config-file>
 ```
 
 We have also set up some useful flags
