@@ -1,7 +1,5 @@
 # Accelerating Large Scale Real-Time GNN Inference using Channel Pruning
 
-This zip file contains source code of the paper "Accelerating Large Scale Real-Time GNN Inference using Channel Pruning" submitted to AAAI 2021.
-
 # Dependencies
 
 * python >= 3.6.8
