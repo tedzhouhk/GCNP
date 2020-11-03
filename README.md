@@ -14,6 +14,10 @@ This zip file contains source code of the paper "Accelerating Large Scale Real-T
 * g++ >= 5.4.0
 * openmp >= 4.0
 
+# Dataset
+
+We use the same data format as GraphSAINT, all dataset used could be downloaded on [Google Drive link](https://drive.google.com/open?id=1zycmmDES39zVlbVCYs88JTJ1Wm5FbfLz) and put into the ``data`` folder in the root directory.
+
 # Model Parameters
 
 All the parameters used in training, pruning and re-training are stored in .yml files in */train_config/fullbatch* and */train_config/minibatch*. The *fullbatch* and *minibatch* folders include the parameters on all datasets for full inference and batched inference, respectively. For each dataset and each inference type, we provide three pruning budgets, 2x, 4x and 8x. Each *.yml* file includes five sections: **1. network** specifying GNN architecture **2. params** parameters in the GNN network **3. phase** parameters to train the original model **4. prune** parameters to prune the trained model **5. retrain_phase** parameters to retrain the pruned model and one optional section **6. batch_inference** parameters in batched inference. The first three sections use the same format as GraphSAINT (GraphSAINT: Graph Sampling Based Inductive Learning Method, Zeng et al, 2020). The detailed information on the entries in the other sections are as follows.
