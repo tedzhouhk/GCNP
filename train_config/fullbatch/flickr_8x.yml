@@ -32,7 +32,7 @@ prune:
       - 0 # gcn-layer-1
     beta_lmbd_1_step:
       - 0.0001
-      - 0.0005
+      - 0.001
       - 0.002
     beta_lmbd_2:
       - 0
