@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
+plt.switch_backend('agg')
+
 def lasso_plot(beta,weight,beta_loss,weight_loss,prune_params,title):
     fig,axs=plt.subplots(2,2)
     fig.suptitle(title)

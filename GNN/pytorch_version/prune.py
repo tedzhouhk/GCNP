@@ -21,8 +21,7 @@ class Lasso(nn.Module):
         self.weight_optimizer = torch.optim.Adam([self.weight], lr=weight_lr)
 
     def forward(self, inputs, mask_in):
-        return torch.mm(inputs, self.weight * self.beta.unsqueeze(1))[:,
-                                                                      mask_in]
+        return torch.mm(inputs, self.weight * self.beta.unsqueeze(1))[:, mask_in]
 
     def optimize_beta(self, inputs, ref, mask_in):
         self.beta_optimizer.zero_grad()
@@ -42,14 +41,14 @@ class Lasso(nn.Module):
 
     def clip_beta(self, budget, beta_clip=False):
         with torch.no_grad():
-            # _, indices = torch.sort(torch.abs(self.beta), descending=False)
-            # self.beta[indices[:int(self.beta.shape[0] * budget)]] = 0
-            # mask_out = torch.ones(self.beta.shape[0], dtype=bool)
-            # mask_out[indices[:int(self.beta.shape[0] * budget)]] = 0
-            # self.mask_out = mask_out
-            # if beta_clip:
-            #     # clip to mean of remaining beta
-            #     torch.clamp(self.beta, max=torch.mean(self.beta[mask_out]))
+            _, indices = torch.sort(torch.abs(self.beta), descending=False)
+            self.beta[indices[:int(self.beta.shape[0] * budget)]] = 0
+            mask_out = torch.ones(self.beta.shape[0], dtype=bool)
+            mask_out[indices[:int(self.beta.shape[0] * budget)]] = 0
+            self.mask_out = mask_out
+            if beta_clip:
+                # clip to mean of remaining beta
+                torch.clamp(self.beta, max=torch.mean(self.beta[mask_out]))
             
             # first k
             # self.beta[:] = 1
@@ -67,12 +66,12 @@ class Lasso(nn.Module):
             # self.mask_out = mask_out
 
             # random
-            _,indices=torch.sort(torch.randn(self.beta.shape),descending=False)
-            self.beta[:] = 1
-            self.beta[indices[:int(self.beta.shape[0] * budget)]] = 0
-            mask_out = torch.ones(self.beta.shape[0], dtype=bool)
-            mask_out[indices[:int(self.beta.shape[0] * budget)]] = 0
-            self.mask_out = mask_out
+            # _,indices=torch.sort(torch.randn(self.beta.shape),descending=False)
+            # self.beta[:] = 1
+            # self.beta[indices[:int(self.beta.shape[0] * budget)]] = 0
+            # mask_out = torch.ones(self.beta.shape[0], dtype=bool)
+            # mask_out[indices[:int(self.beta.shape[0] * budget)]] = 0
+            # self.mask_out = mask_out
 
         return mask_out
 
