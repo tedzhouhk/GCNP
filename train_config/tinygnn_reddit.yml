@@ -1,0 +1,28 @@
+teacher_network:
+  - dim: 128
+    loss: 'softmax'
+    arch: '1-1' 
+    aggr: 'concat'
+    act: 'relu'
+    bias: 'norm'
+student_network:
+  - dim: 128
+    loss: 'softmax'
+    arch: '1' 
+    aggr: 'concat'
+    act: 'relu'
+    bias: 'norm'
+params:
+  - lr: 0.01
+    dropout: 0.1
+    weight_decay: 0.0   
+    sample_coverage: 1000
+phase:
+  - end: 30
+    sampler: 'rw'
+    num_root: 2000
+    depth: 4
+batch_inference:
+  - batch_size: 512
+    neighbors: 32 # maximum number of neighbors
+    approx: True

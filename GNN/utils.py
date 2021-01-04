@@ -5,6 +5,7 @@ import scipy.sparse
 from sklearn.preprocessing import StandardScaler
 import os
 import yaml
+import torch
 import scipy.sparse as sp
 from GNN.globals import *
 
@@ -61,17 +62,16 @@ def parse_layer_yml(arch_gcn,dim_input):
 
 
 
-def parse_n_prepare(flags):
+def parse_n_prepare_tinygnn(flags):
     with open(flags.train_config) as f_train_config:
         train_config = yaml.load(f_train_config)
-    arch_gcn = {'dim':-1,'aggr':'concat','loss':'softmax','arch':'1','act':'I','bias':'norm'}
-    arch_gcn.update(train_config['network'][0])
+    teacher_arch_gcn = {'dim':-1,'aggr':'concat','loss':'softmax','arch':'1','act':'I','bias':'norm'}
+    teacher_arch_gcn.update(train_config['teacher_network'][0])
+    student_arch_gcn = {'dim':-1,'aggr':'concat','loss':'softmax','arch':'1','act':'I','bias':'norm'}
+    student_arch_gcn.update(train_config['student_network'][0])
     train_params = {'lr':0.01,'weight_decay':0.,'norm_loss':True,'norm_aggr':True,'q_threshold':50,'q_offset':0}
     train_params.update(train_config['params'][0])
     train_phases = train_config['phase']
-    retrain_phases=train_config['retrain_phase']
-    prune_params=train_config['prune'][0]
-    inf_params=train_config['batch_inference'][0]
     for ph in train_phases:
         assert 'end' in ph
         assert 'sampler' in ph
@@ -79,7 +79,7 @@ def parse_n_prepare(flags):
     temp_data = load_data(flags.data_prefix)
     train_data = process_graph_data(*temp_data)
     print("Done loading training data..")
-    return train_params,train_phases,retrain_phases,train_data,arch_gcn,prune_params,inf_params
+    return train_params,train_phases,train_data,teacher_arch_gcn,student_arch_gcn
 
 
 
@@ -133,6 +133,14 @@ def adj_norm(adj, deg=None, sort_indices=True):
         adj_norm.sort_indices()
     return adj_norm
 
+def SoftCrossEntropy(inputs, target, reduction='sum'):
+    log_likelihood = -torch.nn.functional.log_softmax(inputs, dim=1)
+    batch = inputs.shape[0]
+    if reduction == 'average':
+        loss = torch.sum(torch.mul(log_likelihood, target)) / batch
+    else:
+        loss = torch.sum(torch.mul(log_likelihood, target))
+    return loss
 
 
 
