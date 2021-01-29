@@ -201,6 +201,10 @@ def train(train_phases,
         "Full test stats: \n  F1_Micro = {:.4f}\tF1_Macro = {:.4f}\ttime = {:.4f}s"
         .format(f1mic_test, f1mac_test, f_time),
         style='red')
+    if args_global.store_result != "":
+        with open(args_global.store_result, encoding="utf-8",mode="a") as f:  
+            f.write(args_global.train_config + '\t' + str(f1mic_test) + '\n')  
+    
     if inf_params is not None:
         if args_global.profile_minibatch:
             if 'prof' in locals() or 'prof' in globals():
@@ -312,7 +316,7 @@ def get_model(train_phases, train_params, arch_gcn, model, minibatch,
               inf_params=inf_params)
     return model, model_eval
     
-def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
+def prune(model, model_eval, retrain_params, prune_params, minibatch, minibatch_eval):
     if args_global.cpu_eval:
         model_full = model_eval
         minibatch_full = minibatch_eval
@@ -332,6 +336,7 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
         layer_steps.append(i)
     lassos = list()
     first_layer_pruned = True
+    prune_time = 0
     for i in range(len(layers)):
         layer = layers[i]
         name = names[i]
@@ -456,8 +461,10 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
                         if args_global.gpu >= 0:
                             _feat = _feat.cuda()
                             _ref = _ref.cuda()
+                        t_s = time.time()
                         loss = lassos[-1].optimize_beta(
                             _feat, _ref, mask[o])
+                        prune_time += time.time() - t_s
                     print('    epoch {} loss: {}'.format(e, loss))
                     beta_loss.append(loss)
                     lassos[-1].lmbd_step()
@@ -478,8 +485,10 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
                         if args_global.gpu >= 0:
                             _feat = _feat.cuda()
                             _ref = _ref.cuda()
+                        t_s = time.time()
                         loss = lassos[-1].optimize_weight(
                             _feat, _ref, mask[o])
+                        prune_time += time.time() - t_s
                     print('    epoch {} loss: {}'.format(e, loss))
                     weight_loss.append(loss)
                 lassos[-1].norm()
@@ -510,6 +519,7 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
                 .format(name, o, f1mic_test, f1mac_test, f_time),
                 style='red')
         mask = mask_out
+    print('Pruning total time: {:.2f}s.'.format(prune_time))
     # create pruned model
     dims_in = list()
     dims_out = list()
@@ -573,7 +583,7 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
     printf("  out: {}".format(str(dims_out)), style='red')
     model_pruned = PrunedGraphSAINT(model_full.num_classes,
                                     model_full.arch_gcn,
-                                    model_full.train_params,
+                                    retrain_params,
                                     model_full.feat_full,
                                     model_full.label_full,
                                     dims_in,
@@ -582,7 +592,7 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
                                     first_layer_pruned=first_layer_pruned)
     model_pruned_eval = PrunedGraphSAINT(model_full.num_classes,
                                          model_full.arch_gcn,
-                                         model_full.train_params,
+                                         retrain_params,
                                          model_full.feat_full,
                                          model_full.label_full,
                                          dims_in,
@@ -627,15 +637,13 @@ def prune(model, model_eval, prune_params, minibatch, minibatch_eval):
 
 
 if __name__ == '__main__':
-    # os.environ['CUDA_LAUNCH_BLOCKING']='1'
-    # sys.settrace(gpu_profile)
-    train_params, train_phases, retrain_phases, train_data, arch_gcn, prune_params, inf_params = parse_n_prepare(
+    train_params, train_phases, retrain_params, retrain_phases, train_data, arch_gcn, prune_params, inf_params = parse_n_prepare(
         args_global)
     model, minibatch, minibatch_eval, model_eval = prepare(
         train_data, train_params, arch_gcn)
     model, model_eval = get_model(train_phases, train_params, arch_gcn, model, minibatch,
               minibatch_eval, model_eval, inf_params)
-    model_pruned, model_pruned_eval = prune(model, model_eval, prune_params,
+    model_pruned, model_pruned_eval = prune(model, model_eval, retrain_params, prune_params,
                                             minibatch, minibatch_eval)
     del model, model_eval
     train(retrain_phases,

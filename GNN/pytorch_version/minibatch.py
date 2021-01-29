@@ -69,6 +69,7 @@ class Minibatch:
         self.subgraphs_remaining_nodes = []
         self.subgraphs_remaining_edge_index = []
 
+
         self.norm_loss_train = np.zeros(self.adj_train.shape[0])
         # norm_loss_test is used in full batch evaluation (without sampling). so neighbor features are simply averaged.
         self.norm_loss_test = np.zeros(self.adj_full_norm.shape[0])

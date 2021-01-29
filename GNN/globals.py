@@ -21,7 +21,7 @@ timestamp = datetime.datetime.fromtimestamp(int(timestamp)).strftime('%Y-%m-%d %
 
 
 parser = argparse.ArgumentParser(description="argument for GraphSAINT training")
-parser.add_argument("--num_cpu_core",default=20,type=int,help="Number of CPU cores for parallel sampling")
+parser.add_argument("--num_cpu_core",default=40,type=int,help="Number of CPU cores for parallel sampling")
 parser.add_argument("--log_device_placement",default=False,action="store_true",help="Whether to log device placement")
 parser.add_argument("--data_prefix",required=True,type=str,help="prefix identifying training data")
 parser.add_argument("--dir_log",default=".",type=str,help="base directory for logging and saving embeddings")
@@ -40,6 +40,7 @@ parser.add_argument("--profile_minibatch", default=False, action="store_true", h
 parser.add_argument("--profile_fullbatch", default=False, action="store_true", help="whether to apply torch.autograd.profiler.profile on fullbatch inference")
 parser.add_argument("--profile_approxminibatch", default=False, action="store_true", help="whether to apply torch.autograd.profiler.profile on approximate minibatch inference")
 parser.add_argument("--cpu_minibatch", default=False, action="store_true", help="whether to use CPU to do minibatch inference")
+parser.add_argument("--store_result", default="", type=str, help="store accuracy result to file for tuning")
 args_global = parser.parse_args()
 
 
