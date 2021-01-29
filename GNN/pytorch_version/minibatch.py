@@ -6,9 +6,9 @@ from GNN.norm_aggr import *
 import torch
 import scipy.sparse as sp
 import scipy
-
 import numpy as np
 import time
+import hashlib
 
 
 def _coo_scipy2torch(adj, coalesce=True, use_cuda=False):
@@ -126,40 +126,54 @@ class Minibatch:
         self.norm_loss_train = np.zeros(self.adj_train.shape[0])
         self.norm_aggr_train = np.zeros(self.adj_train.size).astype(np.float32)
 
-        # For edge sampler, no need to estimate norm factors, we can calculate directly.
-        # However, for integrity of the framework, we decide to follow the same procedure for all samplers:
-        # 1. sample enough number of subgraphs
-        # 2. estimate norm factor alpha and lambda
-        tot_sampled_nodes = 0
-        while True:
-            self.par_graph_sample('train')
-            tot_sampled_nodes = sum(
-                [len(n) for n in self.subgraphs_remaining_nodes])
-            if tot_sampled_nodes > self.sample_coverage * self.node_train.size:
-                break
-        print()
-        num_subg = len(self.subgraphs_remaining_nodes)
-        for i in range(num_subg):
-            self.norm_aggr_train[self.subgraphs_remaining_edge_index[i]] += 1
-            self.norm_loss_train[self.subgraphs_remaining_nodes[i]] += 1
-        assert self.norm_loss_train[self.node_val].sum(
-        ) + self.norm_loss_train[self.node_test].sum() == 0
-        for v in range(self.adj_train.shape[0]):
-            i_s = self.adj_train.indptr[v]
-            i_e = self.adj_train.indptr[v + 1]
-            val = np.clip(
-                self.norm_loss_train[v] / self.norm_aggr_train[i_s:i_e], 0,
-                1e4)
-            val[np.isnan(val)] = 0.1
-            self.norm_aggr_train[i_s:i_e] = val
-        self.norm_loss_train[np.where(self.norm_loss_train == 0)[0]] = 0.1
-        self.norm_loss_train[self.node_val] = 0
-        self.norm_loss_train[self.node_test] = 0
-        self.norm_loss_train[
-            self.node_train] = num_subg / self.norm_loss_train[
-                self.node_train] / self.node_train.size
+        # caching norm_aggr_train and norm_loss_train
+        text = args_global.data_prefix
+        for k, v in train_phases.items():
+            text += str(k) + str(v)
+        path = 'pytorch_models/sample' + hashlib.md5(text.encode('utf-8')).hexdigest() + '.npz'
+        if os.path.isfile(path):
+            print('Found existing sampling normalization coeefficients, loading from', path)
+            samplef = np.load(path)
+            self.norm_loss_train = samplef['norm_loss_train']
+            self.norm_aggr_train = samplef['norm_aggr_train']
+        else:
+            print('Saving sampling normalization coeefficients to', path)
+            # For edge sampler, no need to estimate norm factors, we can calculate directly.
+            # However, for integrity of the framework, we decide to follow the same procedure for all samplers:
+            # 1. sample enough number of subgraphs
+            # 2. estimate norm factor alpha and lambda
+            tot_sampled_nodes = 0
+            while True:
+                self.par_graph_sample('train')
+                tot_sampled_nodes = sum(
+                    [len(n) for n in self.subgraphs_remaining_nodes])
+                if tot_sampled_nodes > self.sample_coverage * self.node_train.size:
+                    break
+            print()
+            num_subg = len(self.subgraphs_remaining_nodes)
+            for i in range(num_subg):
+                self.norm_aggr_train[self.subgraphs_remaining_edge_index[i]] += 1
+                self.norm_loss_train[self.subgraphs_remaining_nodes[i]] += 1
+            assert self.norm_loss_train[self.node_val].sum(
+            ) + self.norm_loss_train[self.node_test].sum() == 0
+            for v in range(self.adj_train.shape[0]):
+                i_s = self.adj_train.indptr[v]
+                i_e = self.adj_train.indptr[v + 1]
+                val = np.clip(
+                    self.norm_loss_train[v] / self.norm_aggr_train[i_s:i_e], 0,
+                    1e4)
+                val[np.isnan(val)] = 0.1
+                self.norm_aggr_train[i_s:i_e] = val
+            self.norm_loss_train[np.where(self.norm_loss_train == 0)[0]] = 0.1
+            self.norm_loss_train[self.node_val] = 0
+            self.norm_loss_train[self.node_test] = 0
+            self.norm_loss_train[
+                self.node_train] = num_subg / self.norm_loss_train[
+                    self.node_train] / self.node_train.size
+            np.savez(path, norm_loss_train=self.norm_loss_train, norm_aggr_train=self.norm_aggr_train)
+        
         self.norm_loss_train = torch.from_numpy(
-            self.norm_loss_train.astype(np.float32))
+                self.norm_loss_train.astype(np.float32))
         if self.use_cuda:
             self.norm_loss_train = self.norm_loss_train.cuda()
 
