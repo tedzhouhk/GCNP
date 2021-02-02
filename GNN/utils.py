@@ -25,7 +25,7 @@ def load_data(prefix, normalize=True):
     scaler.fit(train_feats)
     feats = scaler.transform(feats)
     # -------------------------
-    return adj_full, adj_train, adj_val, feats, class_map, role
+    return adj_full.tocsr(), adj_train.tocsr(), adj_val.tocsr(), feats, class_map, role
 
 
 def process_graph_data(adj_full, adj_train, adj_val, feats, class_map, role):
