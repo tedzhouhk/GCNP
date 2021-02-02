@@ -401,7 +401,7 @@ class PrunedGraphSAINT(nn.Module):
     def minibatched_eval(self,node_test,adj,inf_params):
         print('start minibatch inference ...')
         self.eval()
-        minibatch_sampler = MinibatchSampler(adj.indptr, adj.indices, inf_params['neighbors'], num_thread=40)
+        minibatch_sampler = MinibatchSampler(adj.indptr, adj.indices, inf_params['neighbors'], num_thread=args_global.num_cpu_core)
         t_forward=0
         t_sampling=0
         with torch.no_grad():
@@ -473,9 +473,82 @@ class PrunedGraphSAINT(nn.Module):
         Only support two layers GCN
         """
         print('start minibatch inference ...')
-        assert len(self.aggregators)==2
+        assert len(self.aggregators) == 2
         self.eval()
-        minibatch_sampler = ApproxMinibatchSampler(adj.indptr, adj.indices, saved_activation_id, inf_params['neighbors'], adj.shape[0], num_thread=40)
+        minibatch_sampler = ApproxMinibatchSampler(adj.indptr, adj.indices, saved_activation_id, inf_params['neighbors'], adj.shape[0], num_thread=args_global.num_cpu_core)
+        t_forward=0
+        t_sampling=0
+        with torch.no_grad():
+            if self.first_layer_pruned:
+                _feat_self_full = self.feat_full[:, self.masks[0]]
+                _feat_neigh_full = self.feat_full[:, self.masks[1]]
+            else:
+                _feat_self_full = self.feat_full
+                _feat_neigh_full = self.feat_full
+            minibatches=np.array_split(node_test.astype(np.int32),int(node_test.shape[0]/inf_params['batch_size']))
+            preds=list()
+            labels=list()
+            for root_nodes in tqdm(minibatches):
+                t_sampling_s = time.time()
+                supports = list()
+                support = {'root': root_nodes}
+                unknown_neighbor, known_neighbor, subg_adj = minibatch_sampler.approx_sparse_sampling(root_nodes)
+                subg_adj = _coo_scipy2torch(subg_adj,coalesce=True,use_cuda=self.use_cuda)
+                support['unknown_neighbor'] = unknown_neighbor
+                support['known_neighbor'] = known_neighbor
+                support['adj'] = subg_adj
+                supports.append(support)
+                # in second GCN layer, input is known node attribute
+                support = {'root': np.concatenate((supports[0]['root'], supports[0]['unknown_neighbor']), axis=None)}
+                support['sparse_neighbor'] = np.concatenate((supports[0]['unknown_neighbor'], supports[0]['known_neighbor']), axis=None)
+                support['sparse_known_neighbor'] = supports[0]['known_neighbor']
+                support['dense_neighbor'] = minibatch_sampler.dense_sampling(supports[0]['unknown_neighbor'])
+                supports.append(support)
+                t_sampling += time.time() - t_sampling_s
+                # forward propagation
+                torch.cuda.synchronize()
+                t_forward_s = time.time()
+                if self.first_layer_pruned:
+                    feat_self = _feat_self_full[supports[1]['root']]
+                    feat_neigh_sparse = _feat_neigh_full[supports[1]['sparse_neighbor']]
+                else:
+                    feat_mix = _feat_self_full[np.concatenate((supports[1]['root'], supports[1]['sparse_known_neighbor']), axis=None)]
+                    feat_self = feat_mix[:supports[1]['root'].shape[0]]
+                    feat_neigh_sparse = feat_mix[root_nodes.shape[0]:]
+                feat_neigh_dense = _feat_neigh_full[supports[1]['dense_neighbor']]
+                feat_neigh_dense = feat_neigh_dense.reshape(int(feat_neigh_dense.shape[0] / inf_params['neighbors']), inf_params['neighbors'], feat_neigh_dense.shape[1])
+                _feat = self.aggregators[0].mixed_forward(feat_self, feat_neigh_sparse, feat_neigh_dense, supports[0]['adj'])
+                feat_self = _feat[:root_nodes.shape[0]]
+                saved_activation[root_nodes] = feat_self
+                feat_neigh = torch.cat((_feat[root_nodes.shape[0]:], saved_activation[supports[0]['known_neighbor']]), 0)
+                _feat = self.aggregators[1].sparse_forward(feat_self, feat_neigh, supports[0]['adj'])
+                F.normalize(_feat,p=2,dim=1,out=_feat)
+                pred=self.classifier.inplace_forward(_feat)
+                pred=self.predict(pred)
+                label = self.label_full[root_nodes]
+                torch.cuda.synchronize()
+                t_forward+=time.time()-t_forward_s
+                preds.append(pred.cpu().numpy())
+                labels.append(label.cpu().numpy())
+                minibatch_sampler.update_known_idx(root_nodes)
+        return preds, labels, t_forward, t_sampling
+        
+    def approx_minibatched_eval_with_over_sampling(self, node_test, adj, inf_params, saved_activation, saved_activation_id, over_sample_ratio):
+        """
+        Minibatch inference with historical hidden features
+        Only support two layers GCN
+        """
+        print('start minibatch inference ...')
+        assert len(self.aggregators) == 2
+        self.eval()
+        adj_over_sampled_indptr = [adj.indtpr]
+        adj_over_sampled_indices = [adj.indices]
+        for _ in range(1, over_sample_ratio):
+            adj_over_sampled_indices.append(np.copy(adj.indices)+adj_over_sampled_indptr[-1][-1])
+            adj_over_sampled_indptr.append(np.copy(adj.indptr[1:]) + adj_over_sampled_indptr[-1][-1])
+        adj_over_sampled_indptr = np.concatenate(adj_over_sampled_indptr)
+        adj_over_sampled_indices = np.concatenate(adj_over_sampled_indices)
+        minibatch_sampler = ApproxMinibatchSampler(adj_over_sampled_indptr, adj_over_sampled_indices, saved_activation_id, inf_params['neighbors'], adj.shape[0] * over_sample_ratio, num_thread=args_global.num_cpu_core)
         t_forward=0
         t_sampling=0
         with torch.no_grad():
