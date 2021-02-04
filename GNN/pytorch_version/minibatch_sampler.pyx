@@ -12,8 +12,10 @@ from libcpp cimport bool
 
 cdef inline void npy2vec_int(np.ndarray[int,ndim=1,mode='c'] nda, vector[int]& vec):
     cdef int size = nda.size
-    cdef int* vec_c = &(nda[0])
-    vec.assign(vec_c,vec_c+size)
+    cdef int* vec_c
+    if size > 0:
+        vec_c = &(nda[0])
+        vec.assign(vec_c,vec_c+size)
 
 cdef inline void npy2vec_float(np.ndarray[float,ndim=1,mode='c'] nda, vector[float]& vec):
     cdef int size = nda.size
@@ -137,8 +139,11 @@ cdef class ApproxMinibatchSampler:
         cdef vector[int] nodes_vec
         npy2vec_int(nodes,nodes_vec)
         sampled_nodes_vec=self.cobj.dense_sampling(nodes_vec)
-        arr_int_helper=<int [:sampled_nodes_vec.size()]>sampled_nodes_vec.data()
-        sampled_nodes=np.asarray(arr_int_helper.copy())
+        if sampled_nodes_vec.size()==0:
+            sampled_nodes=np.array([],dtype=np.int32)
+        else:
+            arr_int_helper=<int [:sampled_nodes_vec.size()]>sampled_nodes_vec.data()
+            sampled_nodes=np.asarray(arr_int_helper.copy())
         return sampled_nodes
     
     def approx_sparse_sampling(self,np.ndarray[int,ndim=1,mode='c'] nodes):
@@ -152,8 +157,11 @@ cdef class ApproxMinibatchSampler:
         sampled_adj_data_vec=ans_struct.adj_data;
         arr_int_helper=<int [:sampled_known_nodes_vec.size()]>sampled_known_nodes_vec.data()
         sampled_known_nodes=np.asarray(arr_int_helper).copy()
-        arr_int_helper=<int [:sampled_unknown_nodes_vec.size()]>sampled_unknown_nodes_vec.data()
-        sampled_unknown_nodes=np.asarray(arr_int_helper).copy()
+        if sampled_unknown_nodes_vec.size() == 0:
+            sampled_unknown_nodes=np.array([],dtype=np.int32)
+        else:
+            arr_int_helper=<int [:sampled_unknown_nodes_vec.size()]>sampled_unknown_nodes_vec.data()
+            sampled_unknown_nodes=np.asarray(arr_int_helper).copy()
         arr_int_helper=<int [:sampled_adj_row_vec.size()]>sampled_adj_row_vec.data()
         sampled_adj_row=np.asarray(arr_int_helper).copy()
         arr_int_helper=<int [:sampled_adj_col_vec.size()]>sampled_adj_col_vec.data()

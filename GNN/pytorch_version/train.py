@@ -34,15 +34,17 @@ def evaluate_full_batch(model, minibatch, mode='val'):
 
 
 def evaluate_minibatch(model_eval, minibatch_eval, inf_params, mode='test'):
-    time_s = time.time()
     nodes = minibatch_eval.node_test if mode == 'test' else minibatch_eval.node_val
-    preds, labels, t_forward, t_sampling = model_eval.minibatched_eval(
+    if 'oversample' in inf_params and isinstance(model_eval, PrunedGraphSAINT):
+        eval_func = model_eval.minibatched_eval_with_over_sampling
+    else:
+        eval_func = model_eval.minibatched_eval
+    preds, labels, t_forward, t_sampling = eval_func(
         nodes, minibatch_eval.adj_full_norm_sp, inf_params)
     preds = np.concatenate(preds, axis=0)
     labels = np.concatenate(labels, axis=0)
     f1_scores = calc_f1(labels, preds, model_eval.sigmoid_loss)
-    t_total = time.time() - time_s
-    return f1_scores[0], f1_scores[1], t_forward, t_sampling, t_total
+    return f1_scores[0], f1_scores[1], t_forward, t_sampling, t_forward + t_sampling
 
 def approx_evaluate_minibatch(model_eval, minibatch_eval, inf_params, mode='test', model_cpu=None, minibatch_cpu=None):
     if not args_global.cpu_eval:
@@ -53,14 +55,16 @@ def approx_evaluate_minibatch(model_eval, minibatch_eval, inf_params, mode='test
         historical_feat = model_cpu.get_input_activation(*minibatch_cpu.one_batch(mode='val'), 1)
         if model_eval.use_cuda:
             historical_feat = historical_feat.cuda()
-    time_s = time.time()
-    preds, labels, t_forward, t_sampling = model_eval.approx_minibatched_eval(
+    if 'oversample' in inf_params and isinstance(model_eval, PrunedGraphSAINT):
+        eval_func = model_eval.approx_minibatched_eval_with_over_sampling
+    else:
+        eval_func = model_eval.approx_minibatched_eval
+    preds, labels, t_forward, t_sampling = eval_func(
         minibatch_eval.node_test, minibatch_eval.adj_full_norm_sp, inf_params, historical_feat,minibatch_eval.node_trainval.astype(np.int32))
     preds = np.concatenate(preds, axis=0)
     labels = np.concatenate(labels, axis=0)
     f1_scores = calc_f1(labels, preds, model_eval.sigmoid_loss)
-    t_total = time.time() - time_s
-    return f1_scores[0], f1_scores[1], t_forward, t_sampling, t_total
+    return f1_scores[0], f1_scores[1], t_forward, t_sampling, t_forward + t_sampling
 
 
 def prepare(train_data, train_params, arch_gcn):
