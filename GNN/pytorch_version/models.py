@@ -244,7 +244,7 @@ class GraphSAINT(nn.Module):
                 t_forward+=time.time()-t_forward_s
                 preds.append(pred.cpu().numpy())
                 labels.append(label.cpu().numpy())
-        return preds,labels,t_forward,t_sampling
+        return preds, labels, t_forward, t_sampling
 
 
 class PrunedGraphSAINT(nn.Module):
@@ -483,8 +483,8 @@ class PrunedGraphSAINT(nn.Module):
         node_test = np.concatenate(node_test)
         minibatch_sampler = MinibatchSampler(adj_over_sampled_indptr, adj_over_sampled_indices, inf_params['neighbors'], num_thread=args_global.num_cpu_core)
         self.over_sampled_label_full = self.label_full.repeat(over_sample_ratio, 1)
-        t_forward=0
-        t_sampling=0
+        t_forward=list()
+        t_sampling=list()
         with torch.no_grad():
             if self.first_layer_pruned:
                 _feat_self_full = self.feat_full[:, self.masks[0]]
@@ -513,7 +513,7 @@ class PrunedGraphSAINT(nn.Module):
                         else:
                             support=minibatch_sampler.dense_sampling(supports[0])
                             supports.insert(0,support)
-                t_sampling += time.time() - t_sampling_s
+                t_sampling.append(time.time() - t_sampling_s)
                 torch.cuda.synchronize()
                 t_forward_s=time.time()
                 support_idx = 0
@@ -546,7 +546,7 @@ class PrunedGraphSAINT(nn.Module):
                 pred=self.predict(pred)
                 label = self.over_sampled_label_full[nodes]
                 torch.cuda.synchronize()
-                t_forward+=time.time()-t_forward_s
+                t_forward.append(time.time()-t_forward_s)
                 preds.append(pred.cpu().numpy())
                 labels.append(label.cpu().numpy())
         return preds, labels, t_forward, t_sampling
@@ -643,8 +643,8 @@ class PrunedGraphSAINT(nn.Module):
         saved_activation = saved_activation.repeat(over_sample_ratio, 1)
         minibatch_sampler = ApproxMinibatchSampler(adj_over_sampled_indptr, adj_over_sampled_indices, saved_activation_id, inf_params['neighbors'], adj.shape[0] * over_sample_ratio, num_thread=args_global.num_cpu_core)
         self.over_sampled_label_full = self.label_full.repeat(over_sample_ratio, 1)
-        t_forward=0
-        t_sampling=0
+        t_forward=list()
+        t_sampling=list()
         with torch.no_grad():
             if self.first_layer_pruned:
                 _feat_self_full = self.feat_full[:, self.masks[0]]
@@ -673,7 +673,7 @@ class PrunedGraphSAINT(nn.Module):
                 support['sparse_known_neighbor'] = supports[0]['known_neighbor']
                 support['dense_neighbor'] = minibatch_sampler.dense_sampling(supports[0]['unknown_neighbor'])
                 supports.append(support)
-                t_sampling += time.time() - t_sampling_s
+                t_sampling.append(time.time() - t_sampling_s)
                 # forward propagation
                 torch.cuda.synchronize()
                 t_forward_s = time.time()
@@ -696,7 +696,7 @@ class PrunedGraphSAINT(nn.Module):
                 pred=self.predict(pred)
                 label = self.over_sampled_label_full[root_nodes]
                 torch.cuda.synchronize()
-                t_forward+=time.time()-t_forward_s
+                t_forward.append(time.time()-t_forward_s)
                 preds.append(pred.cpu().numpy())
                 labels.append(label.cpu().numpy())
                 minibatch_sampler.update_known_idx(root_nodes)

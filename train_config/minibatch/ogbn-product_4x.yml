@@ -48,7 +48,7 @@ prune:
     weight_lr: 0.1
     weight_epoch: 20
 retrain_phase:
-  - end: 400
+  - end: 200
     sampler: 'rw'
     num_root: 4000
     depth: 10

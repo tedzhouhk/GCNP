@@ -46,8 +46,10 @@ prune:
     weight_batch: 1024
     weight_lr: 0.1
     weight_epoch: 20
+retrain_params:
+  - dropout: 0.28
 retrain_phase:
-  - end: 400
+  - end: 1
     sampler: 'edge'
     size_subg_edge: 20000
 batch_inference:

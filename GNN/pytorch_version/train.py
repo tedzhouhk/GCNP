@@ -12,6 +12,15 @@ import torch
 import time
 import os
 
+def store_batch_level_result(fname, preds, labels, t_forward, t_sampling, sigmoid_loss):
+    if not os.path.isdir('yelpchi_batch_result'):
+        os.mkdir('yelpchi_batch_result')
+    fname = 'yelpchi_batch_result/' + fname + '.txt'
+    t_total = t_forward + t_sampling
+    with open(fname,'w') as f:
+        for i in range(t_total.shape[0]):
+            f1 = calc_f1(labels[i], preds[i], sigmoid_loss)[0]
+            f.write('{:.4f}\t{:.6f}\n'.format(f1, t_total[i]))
 
 def evaluate_full_batch(model, minibatch, mode='val'):
     """
@@ -37,10 +46,16 @@ def evaluate_minibatch(model_eval, minibatch_eval, inf_params, mode='test'):
     nodes = minibatch_eval.node_test if mode == 'test' else minibatch_eval.node_val
     if 'oversample' in inf_params and isinstance(model_eval, PrunedGraphSAINT):
         eval_func = model_eval.minibatched_eval_with_over_sampling
+        store_each = True
     else:
         eval_func = model_eval.minibatched_eval
+        store_each = False
     preds, labels, t_forward, t_sampling = eval_func(
         nodes, minibatch_eval.adj_full_norm_sp, inf_params)
+    if store_each:
+        store_batch_level_result(args_global.train_config.split('/')[-1].split('.')[0], preds, labels, np.array(t_forward), np.array(t_sampling), model_eval.sigmoid_loss)
+        t_forward = np.sum(np.array(t_forward))
+        t_sampling = np.sum(np.array(t_sampling))
     preds = np.concatenate(preds, axis=0)
     labels = np.concatenate(labels, axis=0)
     f1_scores = calc_f1(labels, preds, model_eval.sigmoid_loss)
@@ -55,12 +70,21 @@ def approx_evaluate_minibatch(model_eval, minibatch_eval, inf_params, mode='test
         historical_feat = model_cpu.get_input_activation(*minibatch_cpu.one_batch(mode='val'), 1)
         if model_eval.use_cuda:
             historical_feat = historical_feat.cuda()
+
     if 'oversample' in inf_params and isinstance(model_eval, PrunedGraphSAINT):
         eval_func = model_eval.approx_minibatched_eval_with_over_sampling
+        store_each = True
+        known_nodes = minibatch_eval.node_trainval.astype(np.int32)[1:]
     else:
         eval_func = model_eval.approx_minibatched_eval
+        store_each = False
+        known_nodes = minibatch_eval.node_trainval.astype(np.int32)
     preds, labels, t_forward, t_sampling = eval_func(
-        minibatch_eval.node_test, minibatch_eval.adj_full_norm_sp, inf_params, historical_feat,minibatch_eval.node_trainval.astype(np.int32))
+        minibatch_eval.node_test, minibatch_eval.adj_full_norm_sp, inf_params, historical_feat, known_nodes)
+    if store_each:
+        store_batch_level_result(args_global.train_config.split('/')[-1].split('.')[0]+'_approx', preds, labels, np.array(t_forward), np.array(t_sampling), model_eval.sigmoid_loss)
+        t_forward = np.sum(np.array(t_forward))
+        t_sampling = np.sum(np.array(t_sampling))
     preds = np.concatenate(preds, axis=0)
     labels = np.concatenate(labels, axis=0)
     f1_scores = calc_f1(labels, preds, model_eval.sigmoid_loss)
@@ -496,10 +520,10 @@ def prune(model, model_eval, retrain_params, prune_params, minibatch, minibatch_
                     print('    epoch {} loss: {}'.format(e, loss))
                     weight_loss.append(loss)
                 lassos[-1].norm()
-            lassos[-1].apply_beta()
             lasso_plot(lassos[-1].beta.detach().cpu().numpy(),
                        lassos[-1].weight.detach().cpu().numpy(), beta_loss,
                        weight_loss, prune_params, name + '_' + str(o))
+            lassos[-1].apply_beta()
             del feat
             del weight
             del ref

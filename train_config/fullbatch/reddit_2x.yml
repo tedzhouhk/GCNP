@@ -25,7 +25,7 @@ prune:
     beta_clip: false
     beta_batch: 1024
     beta_lr: 0.05
-    beta_epoch: 20
+    beta_epoch: 5
     beta_lmbd_1: # in reverse order for each layer (including the classifier)
       - 0 # classifier
       - 0 # gcn-layer-2
@@ -44,12 +44,14 @@ prune:
       - 0
     weight_batch: 1024
     weight_lr: 0.1
-    weight_epoch: 20
+    weight_epoch: 3
 retrain_phase:
   - end: 50
     sampler: 'rw'
     num_root: 2000
     depth: 4
+retrain_params:
+  - lr: 0.03
 batch_inference:
   - batch_size: 512
     neighbors: 32 # maximum number of neighbors

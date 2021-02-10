@@ -155,8 +155,11 @@ cdef class ApproxMinibatchSampler:
         sampled_adj_row_vec=ans_struct.adj_row;
         sampled_adj_col_vec=ans_struct.adj_col;
         sampled_adj_data_vec=ans_struct.adj_data;
-        arr_int_helper=<int [:sampled_known_nodes_vec.size()]>sampled_known_nodes_vec.data()
-        sampled_known_nodes=np.asarray(arr_int_helper).copy()
+        if sampled_known_nodes_vec.size() == 0:
+            sampled_known_nodes=np.array([],dtype=np.int32)
+        else:
+            arr_int_helper=<int [:sampled_known_nodes_vec.size()]>sampled_known_nodes_vec.data()
+            sampled_known_nodes=np.asarray(arr_int_helper).copy()
         if sampled_unknown_nodes_vec.size() == 0:
             sampled_unknown_nodes=np.array([],dtype=np.int32)
         else:

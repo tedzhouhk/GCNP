@@ -14,7 +14,7 @@
 
 # Dataset
 
-We use the same data format as GraphSAINT, all dataset used could be downloaded on [Google Drive link](https://drive.google.com/open?id=1zycmmDES39zVlbVCYs88JTJ1Wm5FbfLz) and put into the ``data`` folder in the root directory.
+We use the same data format as GraphSAINT, all dataset used could be downloaded on [Google Drive link](https://drive.google.com/open?id=1zycmmDES39zVlbVCYs88JTJ1Wm5FbfLz) and put into the ``data`` folder in the root directory. For the Arxiv dataset, please use the undirected ``ogbn-arxiv_undirected`` version instead of the directed ``ogbn-arxiv`` version.
 
 # Model Parameters
 

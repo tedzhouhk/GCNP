@@ -75,7 +75,7 @@ def parse_n_prepare(flags):
         retrain_params.update(train_config['retrain_params'][0])
     else:
         retrain_params = train_params
-    prune_params=train_config['prune'][0]
+    prune_params = train_config['prune'][0]
     inf_params=train_config['batch_inference'][0]
     for ph in train_phases:
         assert 'end' in ph
