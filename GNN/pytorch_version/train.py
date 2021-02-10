@@ -497,6 +497,7 @@ def prune(model, model_eval, retrain_params, prune_params, minibatch, minibatch_
                     beta_loss.append(loss)
                     lassos[-1].lmbd_step()
                 # if not clip_separate:
+                uncliped_beta = lassos[-1].beta.detach().cpu().numpy()
                 mask_out = lassos[-1].clip_beta(budgets[o], prune_params['beta_clip'])
                 # else:
                 #     mask_out = lassos[-1].seperated_clip_beta(self_budget,neigh_budget,prune_params['beta_clip'])
@@ -520,9 +521,9 @@ def prune(model, model_eval, retrain_params, prune_params, minibatch, minibatch_
                     print('    epoch {} loss: {}'.format(e, loss))
                     weight_loss.append(loss)
                 lassos[-1].norm()
-            lasso_plot(lassos[-1].beta.detach().cpu().numpy(),
-                       lassos[-1].weight.detach().cpu().numpy(), beta_loss,
-                       weight_loss, prune_params, name + '_' + str(o))
+            # lasso_plot(uncliped_beta,
+            #            lassos[-1].weight.detach().cpu().numpy(), beta_loss,
+            #            weight_loss, prune_params, name + '_' + str(o))
             lassos[-1].apply_beta()
             del feat
             del weight
