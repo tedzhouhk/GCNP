@@ -495,7 +495,9 @@ class PrunedGraphSAINT(nn.Module):
             _feat_self_full = _feat_self_full.repeat(over_sample_ratio, 1)
             _feat_neigh_full = _feat_neigh_full.repeat(over_sample_ratio, 1)
             minibatches = np.array_split(node_test.astype(np.int32),
-                int(node_test.shape[0]/inf_params['batch_size']))
+                int(node_test.shape[0] / inf_params['batch_size']))
+            if 'limit_batch' in inf_params:
+                minibatches = minibatches[:inf_params['limit_batch']]
             preds=list()
             labels=list()
             for nodes in tqdm(minibatches):
@@ -610,11 +612,11 @@ class PrunedGraphSAINT(nn.Module):
                 pred=self.classifier.inplace_forward(_feat)
                 pred=self.predict(pred)
                 label = self.label_full[root_nodes]
+                minibatch_sampler.update_known_idx(root_nodes)
                 torch.cuda.synchronize()
                 t_forward+=time.time()-t_forward_s
                 preds.append(pred.cpu().numpy())
                 labels.append(label.cpu().numpy())
-                minibatch_sampler.update_known_idx(root_nodes)
         return preds, labels, t_forward, t_sampling
         
     def approx_minibatched_eval_with_over_sampling(self, node_test, adj, inf_params, saved_activation, saved_activation_id):
@@ -655,8 +657,10 @@ class PrunedGraphSAINT(nn.Module):
             _feat_self_full = _feat_self_full.repeat(over_sample_ratio, 1)
             _feat_neigh_full = _feat_neigh_full.repeat(over_sample_ratio, 1)
             minibatches=np.array_split(node_test.astype(np.int32),int(node_test.shape[0]/inf_params['batch_size']))
-            preds=list()
-            labels=list()
+            preds = list()
+            labels = list()
+            if 'limit_batch' in inf_params:
+                minibatches = minibatches[:inf_params['limit_batch']]
             for root_nodes in tqdm(minibatches):
                 t_sampling_s = time.time()
                 supports = list()
@@ -695,9 +699,9 @@ class PrunedGraphSAINT(nn.Module):
                 pred=self.classifier.inplace_forward(_feat)
                 pred=self.predict(pred)
                 label = self.over_sampled_label_full[root_nodes]
+                minibatch_sampler.update_known_idx(root_nodes)
                 torch.cuda.synchronize()
                 t_forward.append(time.time()-t_forward_s)
                 preds.append(pred.cpu().numpy())
                 labels.append(label.cpu().numpy())
-                minibatch_sampler.update_known_idx(root_nodes)
         return preds,labels,t_forward,t_sampling

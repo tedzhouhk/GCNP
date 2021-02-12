@@ -53,8 +53,9 @@ retrain_phase:
     num_root: 3000
     depth: 4
 batch_inference:
-  - batch_size: 4096
+  - batch_size: 512
     neighbors: 32 # maximum number of neighbors
     exact_neighbors: True
     approx: True
-    oversample: 100
+    oversample: 400
+    limit_batch: 1488
