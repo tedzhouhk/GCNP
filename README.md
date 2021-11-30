@@ -62,3 +62,25 @@ We have also set up some useful flags
 - **--profile_fullbatch**: to apply torch.autograd.profiler.profile to full inference and to print the results. *Note: this will incur extra execution time*
 - **--profile_minibatch**: to apply torch.autograd.profiler.profile to batched inference without hidden features and to print the results. *Note: this will incur extra execution time*
 - **--profile_approxminibatch**: to apply torch.autograd.profiler.profile to batched inference with hidden features and to print the results. *Note: this will incur extra execution time*
+
+# Citation
+
+Here's the bibtex in case you want to cite our work.
+```
+@article{10.14778/3461535.3461547,
+  author = {Zhou, Hongkuan and Srivastava, Ajitesh and Zeng, Hanqing and Kannan, Rajgopal and Prasanna, Viktor},
+  title = {Accelerating Large Scale Real-Time GNN Inference Using Channel Pruning},
+  year = {2021},
+  issue_date = {May 2021},
+  publisher = {VLDB Endowment},
+  volume = {14},
+  number = {9},
+  issn = {2150-8097},
+  url = {https://doi.org/10.14778/3461535.3461547},
+  doi = {10.14778/3461535.3461547},
+  journal = {Proc. VLDB Endow.},
+  month = {may},
+  pages = {1597–1605},
+  numpages = {9}
+}
+```
